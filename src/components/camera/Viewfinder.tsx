@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { CameraOff, RefreshCw } from 'lucide-react'
 import {
-  FrameStabilityAnalyzer,
   captureVideoSnapshot,
 } from '../../lib/vision/frame-stability'
-import { scanBarcodeFromVideo } from '../../lib/vision/barcode'
+import { scanBarcodeFromVideoDetailed } from '../../lib/vision/barcode'
+import { LocalRecognizer, type LocalTargetState } from '../../lib/vision/local-recognizer'
 
 interface ViewfinderProps {
   onScanFrame: (base64Data: string, source: 'vision' | 'barcode', isbn?: string) => Promise<void>
@@ -12,6 +12,7 @@ interface ViewfinderProps {
   facingMode: 'environment' | 'user'
   isTorchOn: boolean
   onTorchAvailabilityChange: (available: boolean) => void
+  onLocalTargetChange?: (target: LocalTargetState | null) => void
   containerRef: React.RefObject<HTMLDivElement | null>
   videoRef: React.RefObject<HTMLVideoElement | null>
 }
@@ -22,6 +23,7 @@ export const Viewfinder: React.FC<ViewfinderProps> = ({
   facingMode,
   isTorchOn,
   onTorchAvailabilityChange,
+  onLocalTargetChange,
   containerRef,
   videoRef,
 }) => {
@@ -32,10 +34,17 @@ export const Viewfinder: React.FC<ViewfinderProps> = ({
     height: 720,
   })
 
-  const stabilityAnalyzerRef = useRef<FrameStabilityAnalyzer>(new FrameStabilityAnalyzer(20, 800))
+  const localRecognizerRef = useRef<LocalRecognizer>(new LocalRecognizer(64, 64, 22, 600))
   const lastScanTimestampRef = useRef<number>(0)
   const animationFrameIdRef = useRef<number | null>(null)
   const barcodeIntervalIdRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Clear scan lock when scanning completes
+  useEffect(() => {
+    if (!isScanning) {
+      localRecognizerRef.current.clearScanLock()
+    }
+  }, [isScanning])
 
   // Initialize or update camera stream
   const startCamera = useCallback(async () => {
@@ -92,6 +101,7 @@ export const Viewfinder: React.FC<ViewfinderProps> = ({
 
   // Start camera on mount or facingMode change
   useEffect(() => {
+    localRecognizerRef.current.reset()
     startCamera()
     return () => {
       if (stream) {
@@ -110,41 +120,45 @@ export const Viewfinder: React.FC<ViewfinderProps> = ({
     }
   }
 
-  // Barcode scanning polling loop (every 400ms)
+  // Barcode scanning polling loop (every 350ms)
   useEffect(() => {
     if (!videoRef.current) return
 
     barcodeIntervalIdRef.current = setInterval(async () => {
       if (isScanning || !videoRef.current) return
-      const isbn = await scanBarcodeFromVideo(videoRef.current)
-      if (isbn) {
-        console.log('[Viewfinder] Native barcode detected:', isbn)
-        onScanFrame('', 'barcode', isbn)
+      const result = await scanBarcodeFromVideoDetailed(videoRef.current)
+      if (result) {
+        console.log('[Viewfinder] Native barcode detected:', result.rawValue)
+        if (result.box2d) {
+          const target = localRecognizerRef.current.setBarcodeTarget(result.box2d, result.rawValue)
+          onLocalTargetChange?.(target)
+        }
+        onScanFrame('', 'barcode', result.rawValue)
       }
-    }, 400)
+    }, 350)
 
     return () => {
       if (barcodeIntervalIdRef.current) {
         clearInterval(barcodeIntervalIdRef.current)
       }
     }
-  }, [isScanning, onScanFrame])
+  }, [isScanning, onScanFrame, onLocalTargetChange])
 
-  // 30 FPS frame stability loop
+  // Real-time local recognition and frame stability loop
   useEffect(() => {
     const loop = () => {
       const video = videoRef.current
       const now = Date.now()
 
-      if (
-        video &&
-        video.readyState >= 2 &&
-        !isScanning &&
-        now - lastScanTimestampRef.current > 2000
-      ) {
-        const { isSteady } = stabilityAnalyzerRef.current.processFrame(video)
+      if (video && video.readyState >= 2) {
+        const target = localRecognizerRef.current.processFrame(video, isScanning)
+        onLocalTargetChange?.(target)
 
-        if (isSteady) {
+        if (
+          target?.isSteady &&
+          !isScanning &&
+          now - lastScanTimestampRef.current > 2000
+        ) {
           const snapshot = captureVideoSnapshot(video, 1024, 0.75)
           if (snapshot) {
             lastScanTimestampRef.current = now
@@ -163,7 +177,8 @@ export const Viewfinder: React.FC<ViewfinderProps> = ({
         cancelAnimationFrame(animationFrameIdRef.current)
       }
     }
-  }, [isScanning, onScanFrame])
+  }, [isScanning, onScanFrame, onLocalTargetChange])
+
 
   return (
     <div

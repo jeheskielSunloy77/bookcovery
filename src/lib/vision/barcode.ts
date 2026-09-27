@@ -40,9 +40,14 @@ export async function isBarcodeDetectionSupported(): Promise<boolean> {
   return false
 }
 
-export async function scanBarcodeFromVideo(
+export interface DetectedBarcodeResult {
+  rawValue: string
+  box2d?: [number, number, number, number] // [ymin, xmin, ymax, xmax] 0-1000
+}
+
+export async function scanBarcodeFromVideoDetailed(
   video: HTMLVideoElement
-): Promise<string | null> {
+): Promise<DetectedBarcodeResult | null> {
   if (typeof window === 'undefined') return null
   if (video.videoWidth === 0 || video.videoHeight === 0 || video.paused || video.ended) {
     return null
@@ -60,11 +65,26 @@ export async function scanBarcodeFromVideo(
     const barcodes = await detectorInstance.detect(video)
     if (barcodes && barcodes.length > 0) {
       // Look for standard 10 or 13 digit ISBN/EAN
-      const bookBarcode = barcodes.find((b) => {
-        const val = b.rawValue.trim()
-        return val.startsWith('978') || val.startsWith('979') || val.length === 10 || val.length === 13
-      })
-      return bookBarcode ? bookBarcode.rawValue : barcodes[0].rawValue
+      const bookBarcode =
+        barcodes.find((b) => {
+          const val = b.rawValue.trim()
+          return val.startsWith('978') || val.startsWith('979') || val.length === 10 || val.length === 13
+        }) || barcodes[0]
+
+      let box2d: [number, number, number, number] | undefined
+      if (bookBarcode.boundingBox && video.videoWidth > 0 && video.videoHeight > 0) {
+        const b = bookBarcode.boundingBox
+        const ymin = Math.max(0, Math.min(1000, Math.round((b.top / video.videoHeight) * 1000)))
+        const xmin = Math.max(0, Math.min(1000, Math.round((b.left / video.videoWidth) * 1000)))
+        const ymax = Math.max(0, Math.min(1000, Math.round(((b.top + b.height) / video.videoHeight) * 1000)))
+        const xmax = Math.max(0, Math.min(1000, Math.round(((b.left + b.width) / video.videoWidth) * 1000)))
+        box2d = [ymin, xmin, ymax, xmax]
+      }
+
+      return {
+        rawValue: bookBarcode.rawValue,
+        box2d,
+      }
     }
   } catch {
     // Gracefully handle scan frames where detector is busy
@@ -72,3 +92,11 @@ export async function scanBarcodeFromVideo(
 
   return null
 }
+
+export async function scanBarcodeFromVideo(
+  video: HTMLVideoElement
+): Promise<string | null> {
+  const result = await scanBarcodeFromVideoDetailed(video)
+  return result ? result.rawValue : null
+}
+
