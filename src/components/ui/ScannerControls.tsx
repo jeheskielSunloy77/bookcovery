@@ -7,7 +7,6 @@ import {
   Layers,
   Book,
   Camera,
-  Image as ImageIcon,
 } from 'lucide-react'
 import { useScannerStore } from '../../lib/store/scanner-store'
 
@@ -16,7 +15,6 @@ interface ScannerControlsProps {
   onSwitchCamera: () => void
   onToggleTorch: () => void
   isTorchAvailable: boolean
-  onSelectSampleImage: () => void
   onTriggerManualScan: () => void
   isScanning: boolean
 }
@@ -26,7 +24,6 @@ export const ScannerControls: React.FC<ScannerControlsProps> = ({
   onSwitchCamera,
   onToggleTorch,
   isTorchAvailable,
-  onSelectSampleImage,
   onTriggerManualScan,
   isScanning,
 }) => {
@@ -71,17 +68,8 @@ export const ScannerControls: React.FC<ScannerControlsProps> = ({
           </button>
         </div>
 
-        {/* Right Tools: Sample Demo, Torch, Wishlist */}
+        {/* Right Tools: Torch, Wishlist */}
         <div className="flex items-center gap-2 pointer-events-auto">
-          {/* Sample Shelf Photos Button */}
-          <button
-            onClick={onSelectSampleImage}
-            title="Load sample bookshelf photo"
-            className="p-2.5 rounded-2xl bg-black/60 hover:bg-black/80 backdrop-blur-xl border border-white/10 text-white/80 hover:text-white transition-all shadow-lg active:scale-95 flex items-center gap-1.5 text-xs font-medium"
-          >
-            <ImageIcon className="w-4 h-4 text-cyan-400" />
-            <span className="hidden md:inline">Sample Shelves</span>
-          </button>
 
           {/* Torch toggle */}
           {isTorchAvailable && (

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { CameraOff, RefreshCw, Sparkles } from 'lucide-react'
+import { CameraOff, RefreshCw } from 'lucide-react'
 import {
   FrameStabilityAnalyzer,
   captureVideoSnapshot,
@@ -9,8 +9,6 @@ import { scanBarcodeFromVideo } from '../../lib/vision/barcode'
 interface ViewfinderProps {
   onScanFrame: (base64Data: string, source: 'vision' | 'barcode', isbn?: string) => Promise<void>
   isScanning: boolean
-  sampleImageSrc: string | null
-  onClearSample: () => void
   facingMode: 'environment' | 'user'
   isTorchOn: boolean
   onTorchAvailabilityChange: (available: boolean) => void
@@ -21,8 +19,6 @@ interface ViewfinderProps {
 export const Viewfinder: React.FC<ViewfinderProps> = ({
   onScanFrame,
   isScanning,
-  sampleImageSrc,
-  onClearSample,
   facingMode,
   isTorchOn,
   onTorchAvailabilityChange,
@@ -31,7 +27,7 @@ export const Viewfinder: React.FC<ViewfinderProps> = ({
 }) => {
   const [hasPermission, setHasPermission] = useState<boolean | null>(null)
   const [stream, setStream] = useState<MediaStream | null>(null)
-  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number }>({
+  const [, setVideoDimensions] = useState<{ width: number; height: number }>({
     width: 1280,
     height: 720,
   })
@@ -43,8 +39,6 @@ export const Viewfinder: React.FC<ViewfinderProps> = ({
 
   // Initialize or update camera stream
   const startCamera = useCallback(async () => {
-    if (sampleImageSrc) return // Do not start camera if test photo is active
-
     try {
       if (stream) {
         stream.getTracks().forEach((t) => t.stop())
@@ -78,7 +72,7 @@ export const Viewfinder: React.FC<ViewfinderProps> = ({
       setHasPermission(false)
       onTorchAvailabilityChange(false)
     }
-  }, [facingMode, sampleImageSrc, onTorchAvailabilityChange])
+  }, [facingMode, onTorchAvailabilityChange])
 
   // Manage Torch
   useEffect(() => {
@@ -98,15 +92,13 @@ export const Viewfinder: React.FC<ViewfinderProps> = ({
 
   // Start camera on mount or facingMode change
   useEffect(() => {
-    if (!sampleImageSrc) {
-      startCamera()
-    }
+    startCamera()
     return () => {
       if (stream) {
         stream.getTracks().forEach((t) => t.stop())
       }
     }
-  }, [facingMode, sampleImageSrc])
+  }, [facingMode])
 
   // Video metadata loaded listener
   const handleLoadedMetadata = () => {
@@ -120,7 +112,7 @@ export const Viewfinder: React.FC<ViewfinderProps> = ({
 
   // Barcode scanning polling loop (every 400ms)
   useEffect(() => {
-    if (sampleImageSrc || !videoRef.current) return
+    if (!videoRef.current) return
 
     barcodeIntervalIdRef.current = setInterval(async () => {
       if (isScanning || !videoRef.current) return
@@ -136,12 +128,10 @@ export const Viewfinder: React.FC<ViewfinderProps> = ({
         clearInterval(barcodeIntervalIdRef.current)
       }
     }
-  }, [sampleImageSrc, isScanning, onScanFrame])
+  }, [isScanning, onScanFrame])
 
   // 30 FPS frame stability loop
   useEffect(() => {
-    if (sampleImageSrc) return
-
     const loop = () => {
       const video = videoRef.current
       const now = Date.now()
@@ -173,60 +163,22 @@ export const Viewfinder: React.FC<ViewfinderProps> = ({
         cancelAnimationFrame(animationFrameIdRef.current)
       }
     }
-  }, [sampleImageSrc, isScanning, onScanFrame])
-
-  // Handle sample image auto-scan once loaded
-  useEffect(() => {
-    if (!sampleImageSrc) return
-
-    const img = new Image()
-    img.crossOrigin = 'anonymous'
-    img.src = sampleImageSrc
-    img.onload = () => {
-      const canvas = document.createElement('canvas')
-      canvas.width = img.naturalWidth
-      canvas.height = img.naturalHeight
-      const ctx = canvas.getContext('2d')
-      if (ctx) {
-        ctx.drawImage(img, 0, 0)
-        const base64 = canvas.toDataURL('image/jpeg', 0.8)
-        onScanFrame(base64, 'vision')
-      }
-    }
-  }, [sampleImageSrc, onScanFrame])
+  }, [isScanning, onScanFrame])
 
   return (
     <div
       ref={containerRef}
       className="relative w-full h-full overflow-hidden bg-black flex items-center justify-center select-none"
     >
-      {/* Sample Image Mode */}
-      {sampleImageSrc ? (
-        <div className="relative w-full h-full flex items-center justify-center">
-          <img
-            src={sampleImageSrc}
-            alt="Sample Shelf"
-            className="w-full h-full object-cover"
-          />
-          <div className="absolute top-20 left-4 z-30">
-            <button
-              onClick={onClearSample}
-              className="px-3 py-1.5 rounded-full bg-cyan-500/20 border border-cyan-400/50 backdrop-blur-xl text-cyan-200 text-xs font-semibold flex items-center gap-1.5 hover:bg-cyan-500/30 transition-all shadow-lg shadow-cyan-500/20"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-cyan-300" />
-              <span>Sample Mode Active (Tap to return to Camera)</span>
-            </button>
-          </div>
-        </div>
-      ) : hasPermission === false ? (
+      {hasPermission === false ? (
         // Camera permission denied / unavailable
-        <div className="p-8 text-center max-w-sm space-y-4">
+        <div className="p-8 text-center max-w-sm space-y-4 z-20">
           <div className="w-16 h-16 rounded-3xl bg-neutral-800 border border-white/10 mx-auto flex items-center justify-center text-white/50">
             <CameraOff className="w-8 h-8" />
           </div>
           <h3 className="text-lg font-bold text-white">Camera Access Required</h3>
           <p className="text-xs text-white/60 leading-relaxed">
-            Please allow camera permissions in your browser to scan book spines in real-time, or test using sample library shelf photos.
+            Please allow camera permissions in your browser to scan book spines and covers in real-time.
           </p>
           <div className="pt-2 flex flex-col gap-2">
             <button

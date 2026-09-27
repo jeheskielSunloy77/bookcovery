@@ -5,7 +5,6 @@ import { AROverlay } from '../components/ar/AROverlay'
 import { ScannerControls } from '../components/ui/ScannerControls'
 import { BookDetailSheet } from '../components/ui/BookDetailSheet'
 import { HistoryDrawer } from '../components/ui/HistoryDrawer'
-import { SampleSelectorModal } from '../components/ui/SampleSelectorModal'
 import { useScannerStore } from '../lib/store/scanner-store'
 import {
   mapNormalizedBoxToContainer,
@@ -13,7 +12,6 @@ import {
   type TrackedBookItem,
 } from '../lib/vision/tracker'
 import { scanFrameFn } from '../lib/server/scan'
-import type { DetectedBook } from '../lib/books/types'
 import { captureVideoSnapshot } from '../lib/vision/frame-stability'
 
 export const Route = createFileRoute('/')({
@@ -24,8 +22,6 @@ function ScannerPage() {
   const store = useScannerStore()
   const [trackedItems, setTrackedItems] = useState<TrackedBookItem[]>([])
   const [isScanning, setIsScanning] = useState(false)
-  const [sampleImageSrc, setSampleImageSrc] = useState<string | null>(null)
-  const [isSampleModalOpen, setIsSampleModalOpen] = useState(false)
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment')
   const [isTorchAvailable, setIsTorchAvailable] = useState(false)
 
@@ -160,32 +156,13 @@ function ScannerPage() {
 
   // Manual Trigger Scan
   const handleTriggerManualScan = useCallback(() => {
-    if (sampleImageSrc) {
-      // Re-scan sample
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-      img.src = sampleImageSrc
-      img.onload = () => {
-        const canvas = document.createElement('canvas')
-        canvas.width = img.naturalWidth
-        canvas.height = img.naturalHeight
-        const ctx = canvas.getContext('2d')
-        if (ctx) {
-          ctx.drawImage(img, 0, 0)
-          const base64 = canvas.toDataURL('image/jpeg', 0.8)
-          handleScanFrame(base64, 'vision')
-        }
-      }
-      return
-    }
-
     if (videoRef.current) {
       const snapshot = captureVideoSnapshot(videoRef.current, 1024, 0.8)
       if (snapshot) {
         handleScanFrame(snapshot, 'vision')
       }
     }
-  }, [sampleImageSrc, handleScanFrame])
+  }, [handleScanFrame])
 
   // Camera Switch
   const handleSwitchCamera = () => {
@@ -203,8 +180,6 @@ function ScannerPage() {
       <Viewfinder
         onScanFrame={handleScanFrame}
         isScanning={isScanning}
-        sampleImageSrc={sampleImageSrc}
-        onClearSample={() => setSampleImageSrc(null)}
         facingMode={facingMode}
         isTorchOn={store.isTorchOn}
         onTorchAvailabilityChange={setIsTorchAvailable}
@@ -225,7 +200,6 @@ function ScannerPage() {
         onSwitchCamera={handleSwitchCamera}
         onToggleTorch={handleToggleTorch}
         isTorchAvailable={isTorchAvailable}
-        onSelectSampleImage={() => setIsSampleModalOpen(true)}
         onTriggerManualScan={handleTriggerManualScan}
         isScanning={isScanning}
       />
@@ -242,20 +216,6 @@ function ScannerPage() {
         isOpen={store.isHistoryOpen}
         onClose={() => store.setIsHistoryOpen(false)}
         store={store}
-      />
-
-      {/* Sample Shelf Photo Selector */}
-      <SampleSelectorModal
-        isOpen={isSampleModalOpen}
-        onClose={() => setIsSampleModalOpen(false)}
-        onSelectSample={(sampleUrl) => {
-          setSampleImageSrc(sampleUrl)
-          setTrackedItems([])
-        }}
-        onSwitchToLiveCamera={() => {
-          setSampleImageSrc(null)
-          setTrackedItems([])
-        }}
       />
     </main>
   )
