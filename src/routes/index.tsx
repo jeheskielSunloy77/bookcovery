@@ -12,7 +12,6 @@ import {
   type TrackedBookItem,
 } from '../lib/vision/tracker'
 import { scanFrameFn } from '../lib/server/scan'
-import { captureVideoSnapshot } from '../lib/vision/frame-stability'
 
 export const Route = createFileRoute('/')({
   component: ScannerPage,
@@ -153,16 +152,6 @@ function ScannerPage() {
     [isScanning, store]
   )
 
-  // Manual Trigger Scan
-  const handleTriggerManualScan = useCallback(() => {
-    if (videoRef.current) {
-      const snapshot = captureVideoSnapshot(videoRef.current, 1024, 0.8)
-      if (snapshot) {
-        handleScanFrame(snapshot, 'vision')
-      }
-    }
-  }, [handleScanFrame])
-
   // Camera Switch
   const handleSwitchCamera = () => {
     setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'))
@@ -199,8 +188,6 @@ function ScannerPage() {
         onSwitchCamera={handleSwitchCamera}
         onToggleTorch={handleToggleTorch}
         isTorchAvailable={isTorchAvailable}
-        onTriggerManualScan={handleTriggerManualScan}
-        isScanning={isScanning}
       />
 
       {/* Book Inspection Bottom Sheet */}

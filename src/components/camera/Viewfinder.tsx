@@ -203,11 +203,6 @@ export const Viewfinder: React.FC<ViewfinderProps> = ({
         />
       )}
 
-      {/* Scanning radar line animation */}
-      {isScanning && (
-        <div className="absolute inset-x-0 h-1 z-30 pointer-events-none bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_15px_#22d3ee] animate-scan-pulse" />
-      )}
-
       {/* Subtle vignette border scrim */}
       <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-black/60 via-transparent to-black/40 z-10" />
     </div>

@@ -22,26 +22,6 @@ body {
   -webkit-touch-callout: none;
 }
 
-@keyframes scan-pulse {
-  0% {
-    top: 5%;
-    opacity: 0;
-  }
-  20% {
-    opacity: 1;
-  }
-  80% {
-    opacity: 1;
-  }
-  100% {
-    top: 95%;
-    opacity: 0;
-  }
-}
-
-.animate-scan-pulse {
-  animation: scan-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
 
 /* Custom scrollbars for details drawer */
 ::-webkit-scrollbar {
