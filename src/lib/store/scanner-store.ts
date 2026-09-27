@@ -4,7 +4,6 @@ import type { BookMetadata, DetectedBook } from '../books/types'
 const STORAGE_KEY = 'bookcovery_saved_books_v1'
 
 export interface ScannerState {
-  activeMode: 'shelf' | 'single'
   selectedBook: DetectedBook | null
   savedBooks: BookMetadata[]
   isTorchOn: boolean
@@ -15,7 +14,6 @@ export interface ScannerState {
 }
 
 export function useScannerStore() {
-  const [activeMode, setActiveMode] = useState<'shelf' | 'single'>('shelf')
   const [selectedBook, setSelectedBook] = useState<DetectedBook | null>(null)
   const [isTorchOn, setIsTorchOn] = useState(false)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
@@ -90,8 +88,6 @@ export function useScannerStore() {
   )
 
   return {
-    activeMode,
-    setActiveMode,
     selectedBook,
     setSelectedBook,
     isTorchOn,

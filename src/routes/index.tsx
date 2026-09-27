@@ -63,7 +63,6 @@ function ScannerPage() {
           data: {
             imageBase64: base64Data,
             isbn,
-            mode: store.activeMode,
           },
         })
 

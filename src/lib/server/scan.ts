@@ -8,7 +8,6 @@ import type { DetectedBook, ScanResponse } from '../books/types'
 export interface ScanInput {
   imageBase64?: string
   isbn?: string
-  mode?: 'shelf' | 'single'
 }
 
 function extractJson(text: string): unknown {
@@ -81,9 +80,7 @@ export async function processBookScan(data: ScanInput): Promise<ScanResponse> {
       }
 
       const promptText =
-        data.mode === 'shelf'
-          ? 'Identify all visible book spines on this shelf. For each, return its title, author, and precise 2D bounding box [ymin, xmin, ymax, xmax] (0-1000).'
-          : 'Identify the book in focus. Return its title, author, and precise 2D bounding box [ymin, xmin, ymax, xmax] (0-1000).'
+        'Identify all clearly visible books in the frame (whether multiple book spines on a shelf or stack, or an individual book in focus). For each book, determine its title, author, type ("spine" if on a shelf/stack or "cover" if viewed flat/in-hand), and precise 2D bounding box [ymin, xmin, ymax, xmax] (0-1000).'
 
       const result = await generateText({
         model,

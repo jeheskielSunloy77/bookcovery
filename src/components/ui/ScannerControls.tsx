@@ -4,8 +4,6 @@ import {
   ZapOff,
   SwitchCamera,
   Library,
-  Layers,
-  Book,
   Camera,
 } from 'lucide-react'
 import { useScannerStore } from '../../lib/store/scanner-store'
@@ -27,7 +25,7 @@ export const ScannerControls: React.FC<ScannerControlsProps> = ({
   onTriggerManualScan,
   isScanning,
 }) => {
-  const { activeMode, setActiveMode, isTorchOn, setIsHistoryOpen, savedBooks } = store
+  const { isTorchOn, setIsHistoryOpen, savedBooks } = store
 
   return (
     <>
@@ -42,35 +40,8 @@ export const ScannerControls: React.FC<ScannerControlsProps> = ({
           </span>
         </div>
 
-        {/* Mode Switcher: Shelf vs Single */}
-        <div className="hidden sm:flex items-center p-1 rounded-2xl bg-black/60 backdrop-blur-xl border border-white/10 shadow-lg pointer-events-auto">
-          <button
-            onClick={() => setActiveMode('shelf')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-              activeMode === 'shelf'
-                ? 'bg-white text-black shadow-md'
-                : 'text-white/60 hover:text-white'
-            }`}
-          >
-            <Layers className="w-3.5 h-3.5" />
-            <span>Shelf Mode</span>
-          </button>
-          <button
-            onClick={() => setActiveMode('single')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
-              activeMode === 'single'
-                ? 'bg-white text-black shadow-md'
-                : 'text-white/60 hover:text-white'
-            }`}
-          >
-            <Book className="w-3.5 h-3.5" />
-            <span>Single Book</span>
-          </button>
-        </div>
-
-        {/* Right Tools: Torch, Wishlist */}
+        {/* Right Tools: Torch, Flip Camera, Saved Bookshelf */}
         <div className="flex items-center gap-2 pointer-events-auto">
-
           {/* Torch toggle */}
           {isTorchAvailable && (
             <button
