@@ -45,8 +45,6 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
   const [searchQuery, setSearchQuery] = useState('')
   const [confirmClear, setConfirmClear] = useState(false)
 
-  if (!isOpen) return null
-
   const books: HistoryBookRecord[] = store.historyBooks
 
   const filteredBooks = useMemo(() => {
@@ -59,6 +57,8 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
         b.genres?.some((g) => g.toLowerCase().includes(q))
     )
   }, [books, searchQuery])
+
+  if (!isOpen) return null
 
   const handleExport = () => {
     const markdown = [
