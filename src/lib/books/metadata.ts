@@ -31,20 +31,24 @@ async function fetchFromOpenLibrary(
   author?: string,
   isbn?: string
 ): Promise<Partial<BookMetadata> | null> {
+  const cleanTitle = (title || '').trim()
+  const cleanIsbn = (isbn || '').trim()
+  if (!cleanTitle && !cleanIsbn) return null
+
   try {
     let searchUrl = ''
-    if (isbn && isbn.trim()) {
-      const cleanIsbn = isbn.trim().replace(/[-\s]/g, '')
-      searchUrl = `https://openlibrary.org/search.json?isbn=${encodeURIComponent(cleanIsbn)}&limit=1`
+    if (cleanIsbn) {
+      const sanitizedIsbn = cleanIsbn.replace(/[-\s]/g, '')
+      searchUrl = `https://openlibrary.org/search.json?isbn=${encodeURIComponent(sanitizedIsbn)}&limit=1`
     } else {
       const queryParts: string[] = []
-      if (title) queryParts.push(`title=${encodeURIComponent(title)}`)
-      if (author) queryParts.push(`author=${encodeURIComponent(author)}`)
+      if (cleanTitle) queryParts.push(`title=${encodeURIComponent(cleanTitle)}`)
+      if (author && author.trim()) queryParts.push(`author=${encodeURIComponent(author.trim())}`)
       searchUrl = `https://openlibrary.org/search.json?${queryParts.join('&')}&limit=1`
     }
 
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 4000)
+    const timeoutId = setTimeout(() => controller.abort(), 3000)
 
     const res = await fetch(searchUrl, {
       signal: controller.signal,
@@ -62,7 +66,7 @@ async function fetchFromOpenLibrary(
     if (doc.key) {
       try {
         const ratingController = new AbortController()
-        const rTimeout = setTimeout(() => ratingController.abort(), 3000)
+        const rTimeout = setTimeout(() => ratingController.abort(), 2000)
         const ratingsRes = await fetch(`https://openlibrary.org${doc.key}/ratings.json`, {
           signal: ratingController.signal,
           headers: { 'User-Agent': 'Bookcovery/1.0 (bookcovery-app)' },
@@ -101,8 +105,16 @@ async function fetchFromOpenLibrary(
       source: 'open-library',
       ratingsBreakdown: ratingsData?.counts,
     }
-  } catch (err) {
-    console.warn('[Metadata] Open Library lookup error:', err)
+  } catch (err: unknown) {
+    const isTimeout =
+      (err as any)?.name === 'AbortError' ||
+      (err as any)?.code === 'ETIMEDOUT' ||
+      (err as any)?.cause?.code === 'ETIMEDOUT'
+    if (isTimeout) {
+      console.log(`[Metadata] Open Library timeout for "${cleanTitle || cleanIsbn}" — continuing with available data`)
+    } else {
+      console.log(`[Metadata] Open Library lookup unavailable for "${cleanTitle || cleanIsbn}"`)
+    }
     return null
   }
 }
@@ -172,19 +184,33 @@ export async function resolveBookMetadata(
   author?: string,
   isbn?: string
 ): Promise<BookMetadata> {
+  const cleanTitle = (title || '').trim()
+  const cleanAuthor = (author || '').trim()
+  const cleanIsbn = (isbn || '').trim()
+
+  if (!cleanTitle && !cleanIsbn) {
+    return {
+      id: `book-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      title: 'Untitled Book',
+      author: 'Unknown Author',
+      genres: [],
+      source: 'open-library',
+    }
+  }
+
   // Check cache first
-  const cached = bookCache.get(title, author, isbn)
+  const cached = bookCache.get(cleanTitle, cleanAuthor, cleanIsbn)
   if (cached) {
     return cached
   }
 
   // 1. Try Google Books (if available / non-exhausted)
-  const googleData = await fetchFromGoogleBooks(title, author, isbn)
+  const googleData = await fetchFromGoogleBooks(cleanTitle, cleanAuthor, cleanIsbn)
 
   // 2. Try Open Library
   let openLibData: Partial<BookMetadata> | null = null
   if (!googleData || !googleData.rating || !googleData.coverUrl) {
-    openLibData = await fetchFromOpenLibrary(title, author, isbn)
+    openLibData = await fetchFromOpenLibrary(cleanTitle, cleanAuthor, cleanIsbn)
   }
 
   // Synthesize best available fields

@@ -28,6 +28,27 @@ function extractJson(text: string): unknown {
   }
 }
 
+const BANNED_TITLE_REGEX = /^(unknown|untitled|various|illegible|bookshelf|book\s*collection|row\s*of\s*books|unreadable|n\/a|none)/i
+const BANNED_PHRASES = [
+  'individual titles illegible',
+  'various authors',
+  'various books',
+  'unknown title',
+  'unknown book',
+  'untitled book',
+  'bookshelf row',
+]
+
+function isValidDetectedTitle(title: unknown): boolean {
+  if (typeof title !== 'string') return false
+  const trimmed = title.trim()
+  if (trimmed.length < 2 || trimmed.length > 150) return false
+  if (BANNED_TITLE_REGEX.test(trimmed)) return false
+  const lower = trimmed.toLowerCase()
+  if (BANNED_PHRASES.some((phrase) => lower.includes(phrase))) return false
+  return true
+}
+
 export async function processBookScan(data: ScanInput): Promise<ScanResponse> {
   const timestamp = Date.now()
 
@@ -78,9 +99,8 @@ export async function processBookScan(data: ScanInput): Promise<ScanResponse> {
           rawBase64 = matches[2]
         }
       }
-
       const promptText =
-        'Identify all clearly visible books in the frame (whether multiple book spines on a shelf or stack, or an individual book in focus). For each book, determine its title, author, type ("spine" if on a shelf/stack or "cover" if viewed flat/in-hand), and precise 2D bounding box [ymin, xmin, ymax, xmax] (0-1000).'
+        'Analyze this camera image. Identify ONLY genuine printed books (book covers or book spines) with clearly legible titles or recognized published covers. Do NOT detect furniture, wardrobes, cabinets, empty surfaces, or unreadable distant objects. Do NOT use placeholder titles like "Unknown Book" and do NOT guess titles. If no legible books are visible, return {"books": []}.'
 
       const result = await generateText({
         model,
@@ -106,9 +126,22 @@ export async function processBookScan(data: ScanInput): Promise<ScanResponse> {
       }
       console.log('Gemini raw output:', JSON.stringify(rawJson, null, 2))
 
-      // Flexible normalizer to tolerate varied LLM field names
+      // Flexible normalizer to tolerate varied LLM field names and filter out hallucinated placeholders
       const rawBooks = Array.isArray(rawJson.books) ? rawJson.books : []
-      const normalizedBooks = rawBooks.map((item: any, idx: number) => {
+      const filteredRawBooks = rawBooks.filter((item: any) => {
+        const detectedTitle = item?.title || item?.label || item?.name
+        return isValidDetectedTitle(detectedTitle)
+      })
+
+      if (filteredRawBooks.length === 0) {
+        return {
+          books: [],
+          timestamp,
+          source: 'vision',
+        }
+      }
+
+      const normalizedBooks = filteredRawBooks.map((item: any, idx: number) => {
         let box2d: [number, number, number, number] = [100, 100 + idx * 80, 900, 180 + idx * 80]
 
         const rawBox = item.box2d || item.box_2d || item.boundingBox || item.bbox || item.box
@@ -123,14 +156,14 @@ export async function processBookScan(data: ScanInput): Promise<ScanResponse> {
         }
 
         const preview = item.preview && typeof item.preview === 'object' ? item.preview : {}
-        const detectedTitle = item.title || item.label || item.name || 'Untitled Book'
+        const detectedTitle = item.title || item.label || item.name || ''
         const detectedSynopsis = item.quickSynopsis || item.synopsis || item.description || preview.synopsis
         const rawRating = item.estimatedRating ?? item.rating ?? preview.rating
         const detectedRating = typeof rawRating === 'number' ? rawRating : undefined
 
         return {
-          title: String(detectedTitle),
-          author: item.author ? String(item.author) : undefined,
+          title: String(detectedTitle).trim(),
+          author: item.author ? String(item.author).trim() : undefined,
           type: (item.type === 'cover' ? 'cover' : 'spine') as 'spine' | 'cover',
           box2d,
           confidence: typeof item.confidence === 'number' ? item.confidence : 0.9,
@@ -152,9 +185,28 @@ export async function processBookScan(data: ScanInput): Promise<ScanResponse> {
         }
       }
 
-      // Concurrently resolve rich metadata for all detected books
+      // Filter out low-confidence, invalid bounding box or remaining placeholder titles
+      const validBooks = parsed.data.books.filter((item) => {
+        if (!isValidDetectedTitle(item.title)) return false
+        const [ymin, xmin, ymax, xmax] = item.box2d
+        const height = ymax - ymin
+        const width = xmax - xmin
+        if (height <= 30 || width <= 20) return false
+        if (ymin < 0 || xmin < 0 || ymax > 1000 || xmax > 1000) return false
+        return true
+      })
+
+      if (validBooks.length === 0) {
+        return {
+          books: [],
+          timestamp,
+          source: 'vision',
+        }
+      }
+
+      // Concurrently resolve rich metadata for all validated detected books
       const enrichedBooks: DetectedBook[] = await Promise.all(
-        parsed.data.books.map(async (item, index) => {
+        validBooks.map(async (item, index) => {
           let metadata = await resolveBookMetadata(item.title, item.author)
 
           // Augment with AI quick synopsis / estimated rating if missing
