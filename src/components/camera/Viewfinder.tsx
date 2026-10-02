@@ -9,6 +9,7 @@ import { LocalRecognizer, type LocalTargetState } from '../../lib/vision/local-r
 interface ViewfinderProps {
   onScanFrame: (base64Data: string, source: 'vision' | 'barcode', isbn?: string) => Promise<void>
   isScanning: boolean
+  isAutoScan?: boolean
   facingMode: 'environment' | 'user'
   isTorchOn: boolean
   onTorchAvailabilityChange: (available: boolean) => void
@@ -20,6 +21,7 @@ interface ViewfinderProps {
 export const Viewfinder: React.FC<ViewfinderProps> = ({
   onScanFrame,
   isScanning,
+  isAutoScan = false,
   facingMode,
   isTorchOn,
   onTorchAvailabilityChange,
@@ -36,6 +38,7 @@ export const Viewfinder: React.FC<ViewfinderProps> = ({
 
   const localRecognizerRef = useRef<LocalRecognizer>(new LocalRecognizer(64, 64, 22, 600))
   const lastScanTimestampRef = useRef<number>(0)
+  const hasMovedSinceLastScanRef = useRef<boolean>(true)
   const animationFrameIdRef = useRef<number | null>(null)
   const barcodeIntervalIdRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -154,14 +157,23 @@ export const Viewfinder: React.FC<ViewfinderProps> = ({
         const target = localRecognizerRef.current.processFrame(video, isScanning)
         onLocalTargetChange?.(target)
 
+        // Track when camera moves significantly so we know the scene has changed
+        if (target?.motionScore && target.motionScore > 18) {
+          hasMovedSinceLastScanRef.current = true
+        }
+
+        // Auto-scan ONLY when user has enabled isAutoScan, scene has moved, camera is steady, and cooled down
         if (
+          isAutoScan &&
           target?.isSteady &&
           !isScanning &&
-          now - lastScanTimestampRef.current > 2000
+          hasMovedSinceLastScanRef.current &&
+          now - lastScanTimestampRef.current > 4000
         ) {
           const snapshot = captureVideoSnapshot(video, 1024, 0.75)
           if (snapshot) {
             lastScanTimestampRef.current = now
+            hasMovedSinceLastScanRef.current = false
             onScanFrame(snapshot, 'vision')
           }
         }
@@ -177,12 +189,12 @@ export const Viewfinder: React.FC<ViewfinderProps> = ({
         cancelAnimationFrame(animationFrameIdRef.current)
       }
     }
-  }, [isScanning, onScanFrame, onLocalTargetChange])
-
+  }, [isScanning, isAutoScan, onScanFrame, onLocalTargetChange])
 
   return (
     <div
       ref={containerRef}
+      suppressHydrationWarning
       className="relative w-full h-full overflow-hidden bg-black flex items-center justify-center select-none"
     >
       {hasPermission === false ? (

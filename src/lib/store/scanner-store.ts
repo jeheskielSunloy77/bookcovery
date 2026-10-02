@@ -8,6 +8,7 @@ export interface ScannerState {
   savedBooks: BookMetadata[]
   isTorchOn: boolean
   isHistoryOpen: boolean
+  isAutoScan: boolean
   statusMessage: string
   isAiProcessing: boolean
   lastScanTime: number | null
@@ -17,7 +18,8 @@ export function useScannerStore() {
   const [selectedBook, setSelectedBook] = useState<DetectedBook | null>(null)
   const [isTorchOn, setIsTorchOn] = useState(false)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
-  const [statusMessage, setStatusMessage] = useState('Aim camera at books to scan')
+  const [isAutoScan, setIsAutoScan] = useState(false)
+  const [statusMessage, setStatusMessage] = useState('Aim camera at books and tap Scan')
   const [isAiProcessing, setIsAiProcessing] = useState(false)
   const [lastScanTime, setLastScanTime] = useState<number | null>(null)
   const [savedBooks, setSavedBooks] = useState<BookMetadata[]>([])
@@ -94,6 +96,8 @@ export function useScannerStore() {
     setIsTorchOn,
     isHistoryOpen,
     setIsHistoryOpen,
+    isAutoScan,
+    setIsAutoScan,
     statusMessage,
     setStatusMessage,
     isAiProcessing,

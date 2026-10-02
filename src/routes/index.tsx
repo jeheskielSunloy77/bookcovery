@@ -13,6 +13,7 @@ import {
 } from '../lib/vision/tracker'
 import type { LocalTargetState } from '../lib/vision/local-recognizer'
 import { scanFrameFn } from '../lib/server/scan'
+import { captureVideoSnapshot } from '../lib/vision/frame-stability'
 
 export const Route = createFileRoute('/')({
   component: ScannerPage,
@@ -155,6 +156,21 @@ function ScannerPage() {
     [isScanning, store]
   )
 
+  // Manual Trigger Scan
+  const handleTriggerManualScan = useCallback(() => {
+    if (isScanning || !videoRef.current) return
+    const snapshot = captureVideoSnapshot(videoRef.current, 1024, 0.75)
+    if (snapshot) {
+      handleScanFrame(snapshot, 'vision')
+    }
+  }, [isScanning, handleScanFrame])
+
+  // Clear detected AR books
+  const handleClearTracked = useCallback(() => {
+    setTrackedItems([])
+    store.setStatusMessage('Cleared detected books')
+  }, [store])
+
   // Camera Switch
   const handleSwitchCamera = () => {
     setFacingMode((prev) => (prev === 'environment' ? 'user' : 'environment'))
@@ -166,11 +182,15 @@ function ScannerPage() {
   }
 
   return (
-    <main className="relative w-screen h-screen overflow-hidden bg-black flex flex-col items-center justify-center">
+    <main
+      suppressHydrationWarning
+      className="relative w-screen h-screen overflow-hidden bg-black flex flex-col items-center justify-center"
+    >
       {/* 30 FPS Camera & Video Viewfinder */}
       <Viewfinder
         onScanFrame={handleScanFrame}
         isScanning={isScanning}
+        isAutoScan={store.isAutoScan}
         facingMode={facingMode}
         isTorchOn={store.isTorchOn}
         onTorchAvailabilityChange={setIsTorchAvailable}
@@ -192,13 +212,16 @@ function ScannerPage() {
         videoHeight={videoRef.current?.videoHeight}
       />
 
-
       {/* Tactical Glass HUD Controls */}
       <ScannerControls
         store={store}
         onSwitchCamera={handleSwitchCamera}
         onToggleTorch={handleToggleTorch}
         isTorchAvailable={isTorchAvailable}
+        onTriggerManualScan={handleTriggerManualScan}
+        isScanning={isScanning}
+        hasTrackedBooks={trackedItems.length > 0}
+        onClearTracked={handleClearTracked}
       />
 
       {/* Book Inspection Bottom Sheet */}

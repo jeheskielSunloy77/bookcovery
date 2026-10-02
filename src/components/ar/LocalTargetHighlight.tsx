@@ -38,23 +38,24 @@ export const LocalTargetHighlight: React.FC<LocalTargetHighlightProps> = ({
     return () => clearInterval(interval)
   }, [isScanning])
 
-  // If there are already persistent detected book overlays and we are not currently scanning a new target,
-  // hide the local target to avoid visual clutter
-  if (!target || (!isScanning && hasDetectedBooks)) {
+  // Only show highlight during an active AI scan OR when a verified barcode target is locked (and not yet resolved)
+  if (!isScanning && (target?.source !== 'barcode' || hasDetectedBooks)) {
     return null
   }
 
+  const activeBox = target?.box || [200, 200, 800, 800]
+
   // Map 0-1000 normalized coordinates to screen container
   const screenBox = mapNormalizedBoxToContainer(
-    target.box,
+    activeBox,
     videoWidth || 1280,
     videoHeight || 720,
     containerWidth || window.innerWidth,
     containerHeight || window.innerHeight
   )
 
-  const isBarcode = target.source === 'barcode'
-  const isLocked = target.isLocked || isScanning
+  const isBarcode = target?.source === 'barcode'
+  const isLocked = isBarcode || isScanning
 
   // Status colors based on current phase
   const reticleColor = isScanning
