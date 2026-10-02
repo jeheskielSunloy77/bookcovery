@@ -47,11 +47,11 @@ export const Route = createRootRoute({
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark bg-[#080b10]">
+    <html lang="en" className="dark bg-[#080b10]" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>
-      <body className="bg-[#080b10] text-neutral-100 overflow-hidden select-none">
+      <body className="bg-[#080b10] text-neutral-100 overflow-hidden select-none" suppressHydrationWarning>
         {children}
         <Scripts />
       </body>
