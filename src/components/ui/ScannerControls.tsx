@@ -3,7 +3,7 @@ import {
   Zap,
   ZapOff,
   SwitchCamera,
-  Library,
+  History,
   Camera,
   Loader2,
   Trash2,
@@ -31,7 +31,7 @@ export const ScannerControls: React.FC<ScannerControlsProps> = ({
   hasTrackedBooks = false,
   onClearTracked,
 }) => {
-  const { isTorchOn, setIsHistoryOpen, savedBooks, statusMessage } = store
+  const { isTorchOn, setIsHistoryOpen, historyBooks } = store
 
   return (
     <>
@@ -51,7 +51,7 @@ export const ScannerControls: React.FC<ScannerControlsProps> = ({
           </span>
         </div>
 
-        {/* Right Tools: Torch, Flip Camera, Saved Bookshelf */}
+        {/* Right Tools: Torch, Flip Camera, Scan History */}
         <div suppressHydrationWarning className="flex items-center gap-2 pointer-events-auto">
           {/* Torch toggle */}
           {isTorchAvailable && (
@@ -77,39 +77,27 @@ export const ScannerControls: React.FC<ScannerControlsProps> = ({
             <SwitchCamera className="w-4 h-4" />
           </button>
 
-          {/* Saved Bookshelf Drawer Button */}
+          {/* Scan History Drawer Button */}
           <button
             onClick={() => setIsHistoryOpen(true)}
             className="p-2.5 rounded-2xl bg-black/60 hover:bg-black/80 backdrop-blur-xl border border-white/10 text-white/80 hover:text-white transition-all shadow-lg active:scale-95 relative"
-            title="Open saved bookshelf"
+            title="Open scan history"
           >
-            <Library className="w-4 h-4 text-amber-400" />
-            {savedBooks.length > 0 && (
+            <History className="w-4 h-4 text-amber-400" />
+            {historyBooks.length > 0 && (
               <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-black text-[10px] font-bold rounded-full flex items-center justify-center">
-                {savedBooks.length}
+                {historyBooks.length > 99 ? '99+' : historyBooks.length}
               </span>
             )}
           </button>
         </div>
       </header>
 
-      {/* Bottom Floating Bar: Status Pill & Tactile Shutter */}
+      {/* Bottom Floating Bar: Tactile Shutter */}
       <footer
         suppressHydrationWarning
         className="absolute bottom-6 inset-x-0 z-40 px-4 flex flex-col items-center gap-3 pointer-events-none"
       >
-        {/* Status Pill */}
-        <div
-          suppressHydrationWarning
-          className="flex items-center gap-2 px-4 py-2 rounded-full bg-black/75 backdrop-blur-xl border border-white/15 text-xs text-white/90 shadow-2xl shadow-black/80 pointer-events-auto"
-        >
-          {isScanning ? (
-            <div className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
-          ) : (
-            <div className="w-2 h-2 rounded-full bg-emerald-400" />
-          )}
-          <span className="font-medium">{statusMessage}</span>
-        </div>
 
         {/* Action Controls: Shutter Button & Clear AR */}
         <div suppressHydrationWarning className="pointer-events-auto flex items-center gap-3">

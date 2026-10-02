@@ -20,6 +20,11 @@ export interface BookMetadata {
   }
 }
 
+export interface HistoryBookRecord extends BookMetadata {
+  recordedAt: number
+  scanCount?: number
+}
+
 export interface DetectedBook {
   id: string
   title: string

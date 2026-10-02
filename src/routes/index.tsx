@@ -83,6 +83,9 @@ function ScannerPage() {
           navigator.vibrate?.([20])
         }
 
+        // Persist all recorded books locally into history
+        store.recordBooks(detected)
+
         store.setStatusMessage(
           detected.length === 1
             ? `Found: "${detected[0].title}"`
@@ -222,7 +225,7 @@ function ScannerPage() {
         store={store}
       />
 
-      {/* Saved Bookshelf Drawer */}
+      {/* Scan History Drawer */}
       <HistoryDrawer
         isOpen={store.isHistoryOpen}
         onClose={() => store.setIsHistoryOpen(false)}
