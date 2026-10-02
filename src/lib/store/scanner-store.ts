@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
-import type { BookMetadata, DetectedBook, HistoryBookRecord } from '../books/types'
+import type { BookMetadata, DetectedBook, HistoryBookRecord, WantedBookItem } from '../books/types'
+import { findMatchingWanted, isBookMatchingWanted } from '../books/matcher'
 
 const HISTORY_STORAGE_KEY = 'bookcovery_history_v1'
 const LEGACY_STORAGE_KEY = 'bookcovery_saved_books_v1'
+const WANTED_STORAGE_KEY = 'bookcovery_wanted_v1'
 
 function isSameBook(
   a: { title: string; author?: string; isbn?: string },
@@ -40,6 +42,7 @@ function toBookMetadata(item: DetectedBook | BookMetadata): BookMetadata {
 export interface ScannerState {
   selectedBook: DetectedBook | null
   historyBooks: HistoryBookRecord[]
+  wantedBooks: WantedBookItem[]
   isTorchOn: boolean
   isHistoryOpen: boolean
   isAutoScan: boolean
@@ -59,28 +62,33 @@ export function useScannerStore() {
   const [processingBooksCount, setProcessingBooksCount] = useState(0)
   const [lastScanTime, setLastScanTime] = useState<number | null>(null)
   const [historyBooks, setHistoryBooks] = useState<HistoryBookRecord[]>([])
+  const [wantedBooks, setWantedBooks] = useState<WantedBookItem[]>([])
 
-  // Hydrate history from localStorage (with legacy migration support)
+  // Hydrate history & wanted list from localStorage
   useEffect(() => {
     if (typeof window === 'undefined') return
     try {
       const stored = localStorage.getItem(HISTORY_STORAGE_KEY)
       if (stored) {
         setHistoryBooks(JSON.parse(stored))
-        return
+      } else {
+        // Check legacy storage if history doesn't exist yet
+        const legacyStored = localStorage.getItem(LEGACY_STORAGE_KEY)
+        if (legacyStored) {
+          const legacyBooks: BookMetadata[] = JSON.parse(legacyStored)
+          const migrated: HistoryBookRecord[] = legacyBooks.map((b, idx) => ({
+            ...b,
+            recordedAt: Date.now() - idx * 1000,
+            scanCount: 1,
+          }))
+          setHistoryBooks(migrated)
+          localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(migrated))
+        }
       }
 
-      // Check legacy storage if history doesn't exist yet
-      const legacyStored = localStorage.getItem(LEGACY_STORAGE_KEY)
-      if (legacyStored) {
-        const legacyBooks: BookMetadata[] = JSON.parse(legacyStored)
-        const migrated: HistoryBookRecord[] = legacyBooks.map((b, idx) => ({
-          ...b,
-          recordedAt: Date.now() - idx * 1000,
-          scanCount: 1,
-        }))
-        setHistoryBooks(migrated)
-        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(migrated))
+      const storedWanted = localStorage.getItem(WANTED_STORAGE_KEY)
+      if (storedWanted) {
+        setWantedBooks(JSON.parse(storedWanted))
       }
     } catch {
       // Ignore storage errors
@@ -136,6 +144,33 @@ export function useScannerStore() {
       }
       return next
     })
+
+    // Automatically check incoming detected books against wanted list and mark as found
+    setWantedBooks((prevWanted) => {
+      if (prevWanted.length === 0) return prevWanted
+      let changed = false
+      const nextWanted = prevWanted.map((wanted) => {
+        for (const item of incomingList) {
+          const meta = toBookMetadata(item)
+          if (meta.title && isBookMatchingWanted(meta, wanted) && !wanted.foundAt) {
+            changed = true
+            return {
+              ...wanted,
+              foundAt: Date.now(),
+              foundBookId: meta.id,
+            }
+          }
+        }
+        return wanted
+      })
+      if (changed) {
+        try {
+          localStorage.setItem(WANTED_STORAGE_KEY, JSON.stringify(nextWanted))
+        } catch {}
+        return nextWanted
+      }
+      return prevWanted
+    })
   }, [])
 
   const recordBook = useCallback(
@@ -174,6 +209,164 @@ export function useScannerStore() {
     [historyBooks]
   )
 
+  // --- Wanted List Actions ---
+
+  const addWantedBook = useCallback(
+    (item: { title: string; author?: string; isbn?: string; notes?: string }): WantedBookItem => {
+      const cleanTitle = (item.title || '').trim()
+      if (!cleanTitle) {
+        throw new Error('Title cannot be empty')
+      }
+
+      // Check if already in history
+      const matchedInHistory = historyBooks.find((hb) =>
+        isBookMatchingWanted(hb, {
+          id: '',
+          title: cleanTitle,
+          author: item.author?.trim(),
+          isbn: item.isbn?.trim(),
+          addedAt: 0,
+        })
+      )
+
+      const newItem: WantedBookItem = {
+        id: `wanted_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        title: cleanTitle,
+        author: item.author?.trim() || undefined,
+        isbn: item.isbn?.trim() || undefined,
+        notes: item.notes?.trim() || undefined,
+        addedAt: Date.now(),
+        foundAt: matchedInHistory ? matchedInHistory.recordedAt : undefined,
+        foundBookId: matchedInHistory ? matchedInHistory.id : undefined,
+      }
+
+      setWantedBooks((prev) => {
+        const existing = prev.find((w) => isBookMatchingWanted(newItem, w))
+        if (existing) return prev
+        const next = [newItem, ...prev]
+        try {
+          localStorage.setItem(WANTED_STORAGE_KEY, JSON.stringify(next))
+        } catch {}
+        return next
+      })
+
+      return newItem
+    },
+    [historyBooks]
+  )
+
+  const batchAddWantedBooks = useCallback(
+    (
+      items: Array<{ title: string; author?: string; isbn?: string; notes?: string }>
+    ): { added: number; skipped: number } => {
+      if (!items || items.length === 0) return { added: 0, skipped: 0 }
+
+      let addedCount = 0
+      let skippedCount = 0
+
+      setWantedBooks((prev) => {
+        const next = [...prev]
+
+        for (const item of items) {
+          const cleanTitle = (item.title || '').trim()
+          if (!cleanTitle) {
+            skippedCount++
+            continue
+          }
+
+          const candidate: WantedBookItem = {
+            id: `wanted_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            title: cleanTitle,
+            author: item.author?.trim() || undefined,
+            isbn: item.isbn?.trim() || undefined,
+            notes: item.notes?.trim() || undefined,
+            addedAt: Date.now(),
+          }
+
+          // Check duplicate
+          const duplicate = next.some((w) => isBookMatchingWanted(candidate, w))
+          if (duplicate) {
+            skippedCount++
+            continue
+          }
+
+          // Check if already in history
+          const matchedInHistory = historyBooks.find((hb) => isBookMatchingWanted(hb, candidate))
+          if (matchedInHistory) {
+            candidate.foundAt = matchedInHistory.recordedAt
+            candidate.foundBookId = matchedInHistory.id
+          }
+
+          next.unshift(candidate)
+          addedCount++
+        }
+
+        try {
+          localStorage.setItem(WANTED_STORAGE_KEY, JSON.stringify(next))
+        } catch {}
+        return next
+      })
+
+      return { added: addedCount, skipped: skippedCount }
+    },
+    [historyBooks]
+  )
+
+  const removeWantedBook = useCallback((id: string) => {
+    setWantedBooks((prev) => {
+      const next = prev.filter((w) => w.id !== id)
+      try {
+        localStorage.setItem(WANTED_STORAGE_KEY, JSON.stringify(next))
+      } catch {}
+      return next
+    })
+  }, [])
+
+  const clearWantedBooks = useCallback(() => {
+    setWantedBooks([])
+    try {
+      localStorage.setItem(WANTED_STORAGE_KEY, JSON.stringify([]))
+    } catch {}
+  }, [])
+
+  const markWantedBookFound = useCallback((wantedId: string, historyBookId: string) => {
+    setWantedBooks((prev) => {
+      let changed = false
+      const next = prev.map((item) => {
+        if (item.id === wantedId && !item.foundAt) {
+          changed = true
+          return {
+            ...item,
+            foundAt: Date.now(),
+            foundBookId: historyBookId,
+          }
+        }
+        return item
+      })
+      if (changed) {
+        try {
+          localStorage.setItem(WANTED_STORAGE_KEY, JSON.stringify(next))
+        } catch {}
+      }
+      return next
+    })
+  }, [])
+
+  const getMatchingWantedItem = useCallback(
+    (book?: { title: string; author?: string; isbn?: string } | null): WantedBookItem | undefined => {
+      if (!book || !book.title) return undefined
+      return findMatchingWanted(book, wantedBooks)
+    },
+    [wantedBooks]
+  )
+
+  const isBookWanted = useCallback(
+    (book?: { title: string; author?: string; isbn?: string } | null): boolean => {
+      return !!getMatchingWantedItem(book)
+    },
+    [getMatchingWantedItem]
+  )
+
   return {
     selectedBook,
     setSelectedBook,
@@ -197,6 +390,15 @@ export function useScannerStore() {
     removeHistoryBook,
     clearHistory,
     isBookInHistory,
+    // Wanted list state and methods
+    wantedBooks,
+    addWantedBook,
+    batchAddWantedBooks,
+    removeWantedBook,
+    clearWantedBooks,
+    markWantedBookFound,
+    getMatchingWantedItem,
+    isBookWanted,
     // Backwards compatibility aliases
     savedBooks: historyBooks,
     removeSavedBook: removeHistoryBook,

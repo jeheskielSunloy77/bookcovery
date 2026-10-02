@@ -81,19 +81,32 @@ function ScannerPage() {
           return
         }
 
-        // Haptic feedback for discovery
+        // Check if any detected book matches wanted books!
+        const wantedMatches = detected.filter((b) => store.isBookWanted(b))
+
+        // Haptic feedback: custom double-buzz for wanted matches, single light buzz for discovery
         if (typeof window !== 'undefined' && 'vibrate' in navigator) {
-          navigator.vibrate?.([20])
+          if (wantedMatches.length > 0) {
+            navigator.vibrate?.([60, 80, 60])
+          } else {
+            navigator.vibrate?.([20])
+          }
         }
 
-        // Persist initial recognized books locally into history
+        // Persist initial recognized books locally into history (and auto-mark wanted as found)
         store.recordBooks(detected)
 
-        store.setStatusMessage(
-          detected.length === 1
-            ? `Found: "${detected[0].title}"`
-            : `Locked onto ${detected.length} books on shelf`
-        )
+        if (wantedMatches.length > 0) {
+          store.setStatusMessage(
+            `🎯 Wanted book spotted: "${wantedMatches[0].title}"!`
+          )
+        } else {
+          store.setStatusMessage(
+            detected.length === 1
+              ? `Found: "${detected[0].title}"`
+              : `Locked onto ${detected.length} books on shelf`
+          )
+        }
 
         // Compute screen coordinates for new items
         const container = containerRef.current
@@ -266,6 +279,7 @@ function ScannerPage() {
         items={trackedItems}
         selectedBook={store.selectedBook}
         onSelectBook={(book) => store.setSelectedBook(book)}
+        isBookWanted={(book) => store.isBookWanted(book)}
       />
 
       {/* Tactical Glass HUD Controls */}

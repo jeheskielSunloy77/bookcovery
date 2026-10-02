@@ -25,6 +25,17 @@ export interface HistoryBookRecord extends BookMetadata {
   scanCount?: number
 }
 
+export interface WantedBookItem {
+  id: string
+  title: string
+  author?: string
+  isbn?: string
+  notes?: string
+  addedAt: number
+  foundAt?: number // Timestamp when first spotted by scanner
+  foundBookId?: string // Link to the scanned history book record
+}
+
 export interface DetectedBook {
   id: string
   title: string

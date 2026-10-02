@@ -8,6 +8,7 @@ import {
   Sparkles,
   History,
   CheckCircle2,
+  Target,
 } from 'lucide-react'
 import type { DetectedBook } from '../../lib/books/types'
 import { useScannerStore } from '../../lib/store/scanner-store'
@@ -28,6 +29,9 @@ export const BookDetailSheet: React.FC<BookDetailSheetProps> = ({
   const metadata = book.metadata
   const rating = metadata?.rating
   const isRecorded = store.isBookInHistory(metadata)
+  const matchedWanted =
+    store.getMatchingWantedItem(book) || (metadata ? store.getMatchingWantedItem(metadata) : undefined)
+  const isWanted = !!matchedWanted
 
   // Calculate rating breakdown percentages if available
   const breakdown = metadata?.ratingsBreakdown
@@ -53,6 +57,12 @@ export const BookDetailSheet: React.FC<BookDetailSheetProps> = ({
               <span className="text-[10px] bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 px-2 py-0.5 rounded-full flex items-center gap-1 font-medium">
                 <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                 In History
+              </span>
+            )}
+            {isWanted && (
+              <span className="text-[10px] bg-amber-500/20 border border-amber-400/40 text-amber-300 px-2 py-0.5 rounded-full flex items-center gap-1 font-semibold">
+                <Target className="w-3 h-3 text-amber-400" />
+                On Wanted List
               </span>
             )}
             {metadata?.source && (
@@ -200,25 +210,47 @@ export const BookDetailSheet: React.FC<BookDetailSheetProps> = ({
           )}
 
           {/* Action Row */}
-          <div className="pt-2 flex flex-col sm:flex-row gap-3">
+          <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
+            <button
+              onClick={() => {
+                if (matchedWanted) {
+                  store.removeWantedBook(matchedWanted.id)
+                } else {
+                  store.addWantedBook({
+                    title: book.title,
+                    author: book.author,
+                    isbn: metadata?.isbn,
+                  })
+                }
+              }}
+              className={`flex-1 py-3 px-4 rounded-2xl border text-sm font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98] ${
+                isWanted
+                  ? 'bg-amber-500/20 hover:bg-amber-500/30 border-amber-400/40 text-amber-300'
+                  : 'bg-white/10 hover:bg-white/15 border-white/10 text-white'
+              }`}
+            >
+              <Target className={`w-4 h-4 ${isWanted ? 'text-amber-400' : 'text-white/60'}`} />
+              <span>{isWanted ? 'On Wanted List' : '+ Add to Wanted'}</span>
+            </button>
+
             <button
               onClick={() => {
                 onClose()
                 store.setIsHistoryOpen(true)
               }}
-              className="flex-1 py-3 px-5 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 text-white font-medium text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+              className="flex-1 py-3 px-4 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/10 text-white font-medium text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
             >
               <History className="w-4 h-4 text-amber-400" />
-              <span>View in Scan History</span>
+              <span>View History</span>
             </button>
 
             <a
               href={`https://www.google.com/search?q=${encodeURIComponent(`${book.title} ${book.author || ''} book reviews`)}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex-1 py-3 px-5 rounded-2xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-300 font-semibold text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+              className="flex-1 py-3 px-4 rounded-2xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 text-amber-300 font-semibold text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
             >
-              <span>Search Reviews</span>
+              <span>Reviews</span>
               <ExternalLink className="w-4 h-4 text-amber-300/80" />
             </a>
           </div>
