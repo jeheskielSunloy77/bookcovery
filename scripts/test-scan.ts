@@ -8,7 +8,6 @@ async function runTest() {
   const startTime = Date.now()
   const result = await processBookScan({
     isbn: '9780441172719',
-    mode: 'single',
   })
   const duration = ((Date.now() - startTime) / 1000).toFixed(2)
 

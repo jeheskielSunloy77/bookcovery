@@ -154,7 +154,7 @@ export const BookDetailSheet: React.FC<BookDetailSheetProps> = ({
                 Rating Distribution
               </span>
               {[5, 4, 3, 2, 1].map((stars) => {
-                const count = breakdown[stars.toString() as keyof typeof breakdown] || 0
+                const count = breakdown[stars as keyof typeof breakdown] || 0
                 const percent = Math.round((count / totalCount) * 100) || 0
                 return (
                   <div key={stars} className="flex items-center gap-3 text-xs text-white/60">

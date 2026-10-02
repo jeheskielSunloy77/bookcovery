@@ -8,7 +8,6 @@ import {
   ExternalLink,
   Library,
 } from 'lucide-react'
-import type { BookMetadata } from '../../lib/books/types'
 import { useScannerStore } from '../../lib/store/scanner-store'
 
 interface HistoryDrawerProps {

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Loader2, Barcode, Sparkles, BookCheck } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import type { LocalTargetState } from '../../lib/vision/local-recognizer'
 import { mapNormalizedBoxToContainer } from '../../lib/vision/tracker'
 
