@@ -185,7 +185,7 @@ function ScannerPage() {
   return (
     <main
       suppressHydrationWarning
-      className="relative w-screen h-screen overflow-hidden bg-black flex flex-col items-center justify-center"
+      className="fixed inset-0 w-full h-full h-[100dvh] max-h-[100dvh] overflow-hidden bg-black flex flex-col items-center justify-center select-none"
     >
       {/* 30 FPS Camera & Video Viewfinder */}
       <Viewfinder

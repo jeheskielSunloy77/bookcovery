@@ -34,7 +34,12 @@ export const BookDetailSheet: React.FC<BookDetailSheetProps> = ({
   const totalCount = metadata?.ratingsCount || 0
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 p-4 sm:p-6 flex justify-center pointer-events-none animate-in fade-in slide-from-bottom-8 duration-300">
+    <div
+      style={{
+        paddingBottom: 'max(1rem, calc(env(safe-area-inset-bottom, 0px) + 0.5rem))',
+      }}
+      className="fixed inset-x-0 bottom-0 z-50 p-4 sm:p-6 flex justify-center pointer-events-none animate-in fade-in slide-from-bottom-8 duration-300"
+    >
       <div className="w-full max-w-xl bg-[#0d121c]/95 border border-white/15 backdrop-blur-2xl rounded-3xl shadow-2xl shadow-black/80 overflow-hidden pointer-events-auto flex flex-col max-h-[82vh]">
         {/* Drag handle / Top bar */}
         <div className="relative pt-3 pb-2 px-6 flex items-center justify-between border-b border-white/5">

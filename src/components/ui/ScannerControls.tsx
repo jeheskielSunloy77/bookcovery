@@ -37,7 +37,10 @@ export const ScannerControls: React.FC<ScannerControlsProps> = ({
     <>
       <header
         suppressHydrationWarning
-        className="absolute top-0 inset-x-0 z-40 p-4 sm:p-6 flex items-center justify-between pointer-events-none"
+        style={{
+          top: 'max(0.75rem, env(safe-area-inset-top, 0px))',
+        }}
+        className="absolute inset-x-0 z-40 p-4 sm:p-6 flex items-center justify-between pointer-events-none"
       >
         {/* Brand / Logo */}
         <div
@@ -96,7 +99,10 @@ export const ScannerControls: React.FC<ScannerControlsProps> = ({
       {/* Bottom Floating Bar: Tactile Shutter */}
       <footer
         suppressHydrationWarning
-        className="absolute bottom-6 inset-x-0 z-40 px-4 flex flex-col items-center gap-3 pointer-events-none"
+        style={{
+          bottom: 'max(1.75rem, calc(env(safe-area-inset-bottom, 0px) + 1.25rem))',
+        }}
+        className="absolute inset-x-0 z-40 px-4 flex flex-col items-center gap-3 pointer-events-none"
       >
 
         {/* Action Controls: Shutter Button & Clear AR */}
