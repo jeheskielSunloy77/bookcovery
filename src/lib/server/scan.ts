@@ -93,7 +93,7 @@ export async function processBookScan(data: ScanInput): Promise<ScanResponse> {
           author: 'Searching catalog...',
           isbn: cleanIsbn,
           genres: [],
-          source: 'ai-estimate',
+          source: 'open-library',
         },
         lastSeenTimestamp: timestamp,
       }
@@ -183,11 +183,7 @@ export async function processBookScan(data: ScanInput): Promise<ScanResponse> {
           box2d = [ymin, xmin, ymax, xmax]
         }
 
-        const preview = item.preview && typeof item.preview === 'object' ? item.preview : {}
         const detectedTitle = item.title || item.label || item.name || ''
-        const detectedSynopsis = item.quickSynopsis || item.synopsis || item.description || preview.synopsis
-        const rawRating = item.estimatedRating ?? item.rating ?? preview.rating
-        const detectedRating = typeof rawRating === 'number' ? rawRating : undefined
 
         return {
           title: String(detectedTitle).trim(),
@@ -195,9 +191,6 @@ export async function processBookScan(data: ScanInput): Promise<ScanResponse> {
           type: (item.type === 'cover' ? 'cover' : 'spine') as 'spine' | 'cover',
           box2d,
           confidence: typeof item.confidence === 'number' ? item.confidence : 0.9,
-          quickSynopsis: detectedSynopsis ? String(detectedSynopsis) : undefined,
-          estimatedRating: detectedRating,
-          genres: Array.isArray(item.genres) ? item.genres : undefined,
         }
       })
 
@@ -232,16 +225,14 @@ export async function processBookScan(data: ScanInput): Promise<ScanResponse> {
         }
       }
 
-      // Build detected books with initial AI metadata
+      // Build detected books with initial optical metadata (pending catalog lookup)
       const detectedBooks: DetectedBook[] = validBooks.map((item, index) => {
         const initialMetadata: BookMetadata = {
           id: `book-${timestamp}-${index}`,
           title: item.title,
           author: item.author || 'Unknown Author',
-          rating: item.estimatedRating,
-          synopsis: item.quickSynopsis,
-          genres: item.genres || [],
-          source: 'ai-estimate',
+          genres: [],
+          source: 'open-library',
         }
 
         return {
@@ -260,30 +251,7 @@ export async function processBookScan(data: ScanInput): Promise<ScanResponse> {
       if (data.enrich) {
         const enrichedBooks: DetectedBook[] = await Promise.all(
           validBooks.map(async (item, index) => {
-            let metadata = await resolveBookMetadata(item.title, item.author)
-
-            if (!metadata.rating && item.estimatedRating) {
-              metadata = {
-                ...metadata,
-                rating: item.estimatedRating,
-                source: 'ai-estimate',
-              }
-            }
-
-            if (!metadata.synopsis && item.quickSynopsis) {
-              metadata = {
-                ...metadata,
-                synopsis: item.quickSynopsis,
-              }
-            }
-
-            if (item.genres && item.genres.length > 0 && metadata.genres.length === 0) {
-              metadata = {
-                ...metadata,
-                genres: item.genres,
-              }
-            }
-
+            const metadata = await resolveBookMetadata(item.title, item.author)
             return {
               ...detectedBooks[index],
               metadata,
@@ -327,39 +295,12 @@ export interface EnrichBookInput {
   title: string
   author?: string
   isbn?: string
-  estimatedRating?: number
-  quickSynopsis?: string
-  genres?: string[]
 }
 
 export const enrichBookMetadataFn = createServerFn({ method: 'POST' })
   .validator((input: EnrichBookInput) => input)
   .handler(async ({ data }): Promise<{ bookId: string; metadata: BookMetadata }> => {
-    let metadata = await resolveBookMetadata(data.title, data.author, data.isbn)
-
-    // Augment with AI quick synopsis / estimated rating if missing
-    if (!metadata.rating && data.estimatedRating) {
-      metadata = {
-        ...metadata,
-        rating: data.estimatedRating,
-        source: 'ai-estimate',
-      }
-    }
-
-    if (!metadata.synopsis && data.quickSynopsis) {
-      metadata = {
-        ...metadata,
-        synopsis: data.quickSynopsis,
-      }
-    }
-
-    if (data.genres && data.genres.length > 0 && metadata.genres.length === 0) {
-      metadata = {
-        ...metadata,
-        genres: data.genres,
-      }
-    }
-
+    const metadata = await resolveBookMetadata(data.title, data.author, data.isbn)
     return {
       bookId: data.bookId,
       metadata,

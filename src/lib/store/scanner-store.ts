@@ -105,7 +105,7 @@ export function mergeBookRecords(
     pageCount: incoming.pageCount || existing.pageCount,
     genres: incoming.genres?.length ? incoming.genres : existing.genres,
     isbn: incoming.isbn || existing.isbn,
-    source: (isIncomingEnriched ? incoming.source : existing.source) || incoming.source || 'ai-estimate',
+    source: (isIncomingEnriched ? incoming.source : existing.source) || incoming.source || 'open-library',
     sources: mergedSources.length > 0 ? (mergedSources as ('google-books' | 'open-library' | 'ai-estimate')[]) : undefined,
     ratingsBreakdown: incoming.ratingsBreakdown || existing.ratingsBreakdown,
     recordedAt: Math.max(existing.recordedAt || 0, Date.now()),
@@ -139,8 +139,8 @@ function toBookMetadata(item: DetectedBook | BookMetadata): BookMetadata {
       title: item.title,
       author: item.author || 'Unknown Author',
       genres: [],
-      source: 'ai-estimate',
-      sources: ['ai-estimate'],
+      source: 'open-library',
+      sources: ['open-library'],
     }
   }
   return item

@@ -178,9 +178,6 @@ function ScannerPage() {
               title: book.title,
               author: book.author,
               isbn: book.metadata?.isbn,
-              estimatedRating: book.metadata?.rating,
-              quickSynopsis: book.metadata?.synopsis,
-              genres: book.metadata?.genres,
             },
           })
             .then((res) => {
