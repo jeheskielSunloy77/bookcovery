@@ -31,7 +31,7 @@ export const ScannerControls: React.FC<ScannerControlsProps> = ({
   hasTrackedBooks = false,
   onClearTracked,
 }) => {
-  const { isTorchOn, setIsHistoryOpen, savedBooks, isAutoScan, setIsAutoScan, statusMessage } = store
+  const { isTorchOn, setIsHistoryOpen, savedBooks, statusMessage } = store
 
   return (
     <>
@@ -111,26 +111,13 @@ export const ScannerControls: React.FC<ScannerControlsProps> = ({
           <span className="font-medium">{statusMessage}</span>
         </div>
 
-        {/* Action Controls: Auto-Scan Toggle, Shutter Button, Clear AR */}
+        {/* Action Controls: Shutter Button & Clear AR */}
         <div suppressHydrationWarning className="pointer-events-auto flex items-center gap-3">
-          {/* Auto-Scan toggle button */}
-          <button
-            onClick={() => setIsAutoScan((prev) => !prev)}
-            className={`px-3.5 py-2.5 rounded-full text-xs font-semibold backdrop-blur-xl border transition-all active:scale-95 flex items-center gap-1.5 ${
-              isAutoScan
-                ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300'
-                : 'bg-black/60 hover:bg-black/80 border-white/10 text-white/70 hover:text-white'
-            }`}
-            title="Toggle automatic scene scanning"
-          >
-            <span className={`w-2 h-2 rounded-full ${isAutoScan ? 'bg-emerald-400 animate-pulse' : 'bg-white/40'}`} />
-            <span>Auto-Scan: {isAutoScan ? 'ON' : 'OFF'}</span>
-          </button>
-
-          {/* Shutter / Instant Scan Action Button */}
+          {/* Shutter / Instant Manual Trigger Scan Button */}
           <button
             onClick={onTriggerManualScan}
             disabled={isScanning}
+            title="Scan books manually if missed by auto-scan"
             className="px-6 py-3 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-sm flex items-center gap-2 shadow-xl shadow-amber-500/25 active:scale-95 transition-all disabled:opacity-50"
           >
             {isScanning ? (

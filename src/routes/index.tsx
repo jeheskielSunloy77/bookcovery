@@ -11,7 +11,6 @@ import {
   updateTrackedItems,
   type TrackedBookItem,
 } from '../lib/vision/tracker'
-import type { LocalTargetState } from '../lib/vision/local-recognizer'
 import { scanFrameFn } from '../lib/server/scan'
 import { captureVideoSnapshot } from '../lib/vision/frame-stability'
 
@@ -22,7 +21,6 @@ export const Route = createFileRoute('/')({
 function ScannerPage() {
   const store = useScannerStore()
   const [trackedItems, setTrackedItems] = useState<TrackedBookItem[]>([])
-  const [localTarget, setLocalTarget] = useState<LocalTargetState | null>(null)
   const [isScanning, setIsScanning] = useState(false)
 
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment')
@@ -76,7 +74,7 @@ function ScannerPage() {
 
         const detected = response.books || []
         if (detected.length === 0) {
-          store.setStatusMessage('No books detected in frame — adjust camera')
+          store.setStatusMessage('No books detected — adjust camera or tap Scan')
           return
         }
 
@@ -194,7 +192,6 @@ function ScannerPage() {
         facingMode={facingMode}
         isTorchOn={store.isTorchOn}
         onTorchAvailabilityChange={setIsTorchAvailable}
-        onLocalTargetChange={setLocalTarget}
         containerRef={containerRef}
         videoRef={videoRef}
       />
@@ -204,12 +201,6 @@ function ScannerPage() {
         items={trackedItems}
         selectedBook={store.selectedBook}
         onSelectBook={(book) => store.setSelectedBook(book)}
-        localTarget={localTarget}
-        isScanning={isScanning}
-        containerWidth={containerRef.current?.clientWidth}
-        containerHeight={containerRef.current?.clientHeight}
-        videoWidth={videoRef.current?.videoWidth}
-        videoHeight={videoRef.current?.videoHeight}
       />
 
       {/* Tactical Glass HUD Controls */}
