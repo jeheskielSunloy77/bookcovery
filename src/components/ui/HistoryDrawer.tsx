@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect, useRef } from 'react'
 import {
   X,
   Trash2,
@@ -12,14 +12,13 @@ import {
   Target,
   Plus,
   FileCode,
-  CheckCircle2,
   Bookmark,
   Sparkles,
-  ChevronRight,
 } from 'lucide-react'
 import { useScannerStore } from '../../lib/store/scanner-store'
 import type { HistoryBookRecord, DetectedBook, WantedBookItem } from '../../lib/books/types'
 import { BatchImportModal } from './BatchImportModal'
+import { enrichBookMetadataFn } from '../../lib/server/scan'
 
 interface HistoryDrawerProps {
   isOpen: boolean
@@ -53,7 +52,6 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
   const [activeTab, setActiveTab] = useState<'history' | 'wanted'>('history')
   const [searchQuery, setSearchQuery] = useState('')
   const [historyFilter, setHistoryFilter] = useState<'all' | 'wanted-only'>('all')
-  const [wantedFilter, setWantedFilter] = useState<'all' | 'looking' | 'found'>('all')
   const [confirmClearHistory, setConfirmClearHistory] = useState(false)
   const [confirmClearWanted, setConfirmClearWanted] = useState(false)
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false)
@@ -62,16 +60,10 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
   const [newTitle, setNewTitle] = useState('')
   const [newAuthor, setNewAuthor] = useState('')
   const [addFeedback, setAddFeedback] = useState<string | null>(null)
+  const attemptedEnrichIds = useRef<Set<string>>(new Set())
 
   const historyBooks: HistoryBookRecord[] = store.historyBooks
   const wantedBooks: WantedBookItem[] = store.wantedBooks
-
-  // Calculate wanted stats
-  const foundWantedCount = useMemo(
-    () => wantedBooks.filter((w) => !!w.foundAt).length,
-    [wantedBooks]
-  )
-  const lookingWantedCount = wantedBooks.length - foundWantedCount
 
   // Map of which history book IDs match wanted books
   const wantedMatchedHistoryBookIds = useMemo(() => {
@@ -83,6 +75,52 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
     }
     return ids
   }, [historyBooks, store])
+
+  // Automatically fetch missing covers for wanted books in background
+  useEffect(() => {
+    if (!isOpen || activeTab !== 'wanted') return
+
+    wantedBooks.forEach((item) => {
+      if (item.coverUrl || attemptedEnrichIds.current.has(item.id)) return
+      attemptedEnrichIds.current.add(item.id)
+
+      // First check if a recorded book in history matches and has a cover
+      const matchedHistory = historyBooks.find(
+        (hb) =>
+          hb.coverUrl &&
+          hb.title &&
+          item.title &&
+          hb.title.trim().toLowerCase() === item.title.trim().toLowerCase()
+      )
+      if (matchedHistory?.coverUrl) {
+        store.updateWantedBook(item.id, { coverUrl: matchedHistory.coverUrl })
+        return
+      }
+
+      // Fetch cover via enrichBookMetadataFn
+      enrichBookMetadataFn({
+        data: {
+          bookId: item.id,
+          title: item.title,
+          author: item.author,
+          isbn: item.isbn,
+        },
+      })
+        .then((res) => {
+          if (res?.metadata?.coverUrl) {
+            store.updateWantedBook(item.id, { coverUrl: res.metadata.coverUrl })
+          }
+        })
+        .catch(() => {
+          if (item.isbn) {
+            const clean = item.isbn.replace(/[-\s]/g, '')
+            store.updateWantedBook(item.id, {
+              coverUrl: `https://covers.openlibrary.org/b/isbn/${clean}-M.jpg`,
+            })
+          }
+        })
+    })
+  }, [isOpen, activeTab, wantedBooks, historyBooks, store])
 
   // Filtered History Books
   const filteredHistoryBooks = useMemo(() => {
@@ -102,21 +140,15 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
 
   // Filtered Wanted Books
   const filteredWantedBooks = useMemo(() => {
-    let list = wantedBooks
-    if (wantedFilter === 'looking') {
-      list = list.filter((w) => !w.foundAt)
-    } else if (wantedFilter === 'found') {
-      list = list.filter((w) => !!w.foundAt)
-    }
     const q = searchQuery.trim().toLowerCase()
-    if (!q) return list
-    return list.filter(
+    if (!q) return wantedBooks
+    return wantedBooks.filter(
       (w) =>
         w.title.toLowerCase().includes(q) ||
         (w.author && w.author.toLowerCase().includes(q)) ||
         (w.notes && w.notes.toLowerCase().includes(q))
     )
-  }, [wantedBooks, wantedFilter, searchQuery])
+  }, [wantedBooks, searchQuery])
 
   if (!isOpen) return null
 
@@ -160,32 +192,39 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
     onClose()
   }
 
-  const handleOpenFoundFromWanted = (wanted: WantedBookItem) => {
-    if (!wanted.foundBookId) return
-    const matchedBook = historyBooks.find((b) => b.id === wanted.foundBookId)
-    if (matchedBook) {
-      handleOpenDetail(matchedBook)
-    }
-  }
-
   const handleAddQuickBook = (e: React.FormEvent) => {
     e.preventDefault()
     const title = newTitle.trim()
+    const author = newAuthor.trim() || undefined
     if (!title) return
 
     try {
       const added = store.addWantedBook({
         title,
-        author: newAuthor.trim() || undefined,
+        author,
       })
       setNewTitle('')
       setNewAuthor('')
-      setAddFeedback(
-        added.foundAt
-          ? `Added "${added.title}" — already spotted in your scan history!`
-          : `Added "${added.title}" to Wanted List!`
-      )
+      setAddFeedback(`Added "${added.title}" to Wanted List!`)
       setTimeout(() => setAddFeedback(null), 2500)
+
+      if (!added.coverUrl) {
+        enrichBookMetadataFn({
+          data: {
+            bookId: added.id,
+            title: added.title,
+            author: added.author,
+          },
+        })
+          .then((res) => {
+            if (res?.metadata?.coverUrl) {
+              store.updateWantedBook(added.id, {
+                coverUrl: res.metadata.coverUrl,
+              })
+            }
+          })
+          .catch(() => {})
+      }
     } catch (err) {
       setAddFeedback((err as Error).message)
       setTimeout(() => setAddFeedback(null), 2000)
@@ -230,7 +269,7 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
                           ? `(${wantedMatchedHistoryBookIds.size} wanted)`
                           : ''
                       }`
-                    : `${wantedBooks.length} wanted (${lookingWantedCount} looking · ${foundWantedCount} found)`}
+                    : `${wantedBooks.length} ${wantedBooks.length === 1 ? 'wanted book' : 'wanted books'}`}
                 </p>
               </div>
             </div>
@@ -361,31 +400,34 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
                     </button>
 
                     {confirmClearHistory ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-red-400">Clear all?</span>
+                      <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/30 px-2.5 py-1 rounded-xl animate-in fade-in">
+                        <span className="text-[11px] font-medium text-red-300">
+                          Delete all {historyBooks.length}?
+                        </span>
                         <button
                           onClick={() => {
                             store.clearHistory()
                             setConfirmClearHistory(false)
                           }}
-                          className="text-[11px] px-2 py-0.5 rounded-md bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30"
+                          className="text-[11px] px-2 py-0.5 rounded-lg bg-red-500 text-white font-bold hover:bg-red-600 transition-colors shadow-sm"
                         >
-                          Yes
+                          Delete All
                         </button>
                         <button
                           onClick={() => setConfirmClearHistory(false)}
-                          className="text-[11px] px-2 py-0.5 rounded-md bg-white/10 text-white/70 hover:bg-white/20"
+                          className="text-[11px] px-2 py-0.5 rounded-lg bg-white/10 text-white/70 hover:bg-white/20 transition-colors"
                         >
-                          No
+                          Cancel
                         </button>
                       </div>
                     ) : (
                       <button
                         onClick={() => setConfirmClearHistory(true)}
-                        className="text-xs font-medium text-white/40 hover:text-red-400 flex items-center gap-1 transition-colors"
+                        className="text-xs font-semibold text-red-400/80 hover:text-red-300 hover:bg-red-500/10 px-2.5 py-1 rounded-xl border border-red-500/20 flex items-center gap-1.5 transition-all"
+                        title="Delete all recorded scan history"
                       >
-                        <Trash2 className="w-3 h-3" />
-                        <span>Clear</span>
+                        <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                        <span>Delete All History</span>
                       </button>
                     )}
                   </div>
@@ -579,92 +621,57 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
 
                 {wantedBooks.length > 0 &&
                   (confirmClearWanted ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-red-400">Clear all?</span>
+                    <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/30 px-2.5 py-1 rounded-xl animate-in fade-in">
+                      <span className="text-[11px] font-medium text-red-300">
+                        Delete all {wantedBooks.length} wanted?
+                      </span>
                       <button
                         onClick={() => {
                           store.clearWantedBooks()
                           setConfirmClearWanted(false)
                         }}
-                        className="text-[11px] px-2 py-0.5 rounded-md bg-red-500/20 border border-red-500/40 text-red-300 hover:bg-red-500/30"
+                        className="text-[11px] px-2 py-0.5 rounded-lg bg-red-500 text-white font-bold hover:bg-red-600 transition-colors shadow-sm"
                       >
-                        Yes
+                        Delete All
                       </button>
                       <button
                         onClick={() => setConfirmClearWanted(false)}
-                        className="text-[11px] px-2 py-0.5 rounded-md bg-white/10 text-white/70 hover:bg-white/20"
+                        className="text-[11px] px-2 py-0.5 rounded-lg bg-white/10 text-white/70 hover:bg-white/20 transition-colors"
                       >
-                        No
+                        Cancel
                       </button>
                     </div>
                   ) : (
                     <button
                       onClick={() => setConfirmClearWanted(true)}
-                      className="text-xs font-medium text-white/40 hover:text-red-400 flex items-center gap-1 transition-colors"
+                      className="text-xs font-semibold text-red-400/80 hover:text-red-300 hover:bg-red-500/10 px-2.5 py-1 rounded-xl border border-red-500/20 flex items-center gap-1.5 transition-all"
+                      title="Delete all wanted books"
                     >
-                      <Trash2 className="w-3 h-3" />
-                      <span>Clear Wanted</span>
+                      <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                      <span>Delete All Wanted</span>
                     </button>
                   ))}
               </div>
 
-              {/* Status Filter Chips & Search Bar if items exist */}
+              {/* Search Bar if items exist */}
               {wantedBooks.length > 0 && (
-                <div className="space-y-2 pt-1">
-                  <div className="flex items-center gap-1.5">
+                <div className="relative pt-1">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search wanted list..."
+                    className="w-full pl-8 pr-8 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-white/40 focus:outline-none focus:border-amber-400/50"
+                  />
+                  {searchQuery && (
                     <button
-                      onClick={() => setWantedFilter('all')}
-                      className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all ${
-                        wantedFilter === 'all'
-                          ? 'bg-white/15 border-white/20 text-white font-medium'
-                          : 'bg-transparent border-transparent text-white/50 hover:text-white'
-                      }`}
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
                     >
-                      All ({wantedBooks.length})
+                      <X className="w-3 h-3" />
                     </button>
-                    <button
-                      onClick={() => setWantedFilter('looking')}
-                      className={`text-[11px] px-2.5 py-1 rounded-lg border flex items-center gap-1 transition-all ${
-                        wantedFilter === 'looking'
-                          ? 'bg-amber-500/20 border-amber-400/50 text-amber-300 font-semibold'
-                          : 'bg-transparent border-transparent text-amber-400/70 hover:text-amber-300'
-                      }`}
-                    >
-                      <Target className="w-3 h-3 text-amber-400" />
-                      <span>Looking ({lookingWantedCount})</span>
-                    </button>
-                    <button
-                      onClick={() => setWantedFilter('found')}
-                      className={`text-[11px] px-2.5 py-1 rounded-lg border flex items-center gap-1 transition-all ${
-                        wantedFilter === 'found'
-                          ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300 font-semibold'
-                          : 'bg-transparent border-transparent text-emerald-400/70 hover:text-emerald-300'
-                      }`}
-                    >
-                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                      <span>Found ({foundWantedCount})</span>
-                    </button>
-                  </div>
-
-                  {/* Search Wanted List */}
-                  <div className="relative">
-                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search wanted list..."
-                      className="w-full pl-8 pr-8 py-1 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-white/40 focus:outline-none focus:border-amber-400/50"
-                    />
-                    {searchQuery && (
-                      <button
-                        onClick={() => setSearchQuery('')}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
+                  )}
                 </div>
               )}
             </div>
@@ -681,7 +688,7 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
                   <Bookmark className="w-12 h-12 mb-3 stroke-[1.2] text-white/20" />
                   <p className="text-sm font-medium text-white/70">Your Wanted List is empty</p>
                   <p className="text-xs text-white/40 mt-1 max-w-[260px]">
-                    Add books you are looking for above or import a JSON list. When scanned by the camera, they will be highlighted!
+                    Add books you want to find above or import a JSON list. When scanned by the camera, they will be highlighted!
                   </p>
                   <button
                     onClick={() => setIsBatchModalOpen(true)}
@@ -695,105 +702,86 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
                 <div className="py-12 flex flex-col items-center justify-center text-center text-white/40">
                   <Search className="w-8 h-8 mb-2 stroke-[1.2] text-white/20" />
                   <p className="text-xs font-medium text-white/60">
-                    {wantedFilter === 'looking'
-                      ? 'No books currently marked as looking'
-                      : wantedFilter === 'found'
-                        ? 'No wanted books found yet'
-                        : `No books matching "${searchQuery}"`}
+                    No books matching "{searchQuery}"
                   </p>
                 </div>
               ) : (
-                filteredWantedBooks.map((item) => {
-                  const isFound = !!item.foundAt
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => {
-                        if (isFound) handleOpenFoundFromWanted(item)
-                      }}
-                      className={`p-3.5 rounded-2xl border transition-all relative ${
-                        isFound
-                          ? 'bg-emerald-500/[0.08] border-emerald-400/40 hover:bg-emerald-500/[0.12] hover:border-emerald-400/60 cursor-pointer group'
-                          : 'bg-white/5 border-white/10 hover:bg-white/[0.08]'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          {/* Status Badge */}
-                          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                            {isFound ? (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-300 bg-emerald-500/20 border border-emerald-400/40 px-2 py-0.5 rounded-full">
-                                <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                                <span>Found in Scan</span>
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-300 bg-amber-500/15 border border-amber-400/30 px-2 py-0.5 rounded-full">
-                                <Target className="w-3 h-3 text-amber-400" />
-                                <span>Looking for</span>
-                              </span>
-                            )}
+                filteredWantedBooks.map((item) => (
+                  <div
+                    key={item.id}
+                    className="p-3.5 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/[0.08] hover:border-white/20 transition-all relative group"
+                  >
+                    <div className="flex items-center gap-3.5">
+                      {/* Book Cover Thumbnail */}
+                      <div className="w-12 h-16 rounded-lg bg-neutral-800 shrink-0 overflow-hidden border border-white/10 flex items-center justify-center relative">
+                        <BookOpen className="w-4 h-4 text-white/30 absolute" />
+                        {item.coverUrl && (
+                          <img
+                            src={item.coverUrl}
+                            alt={item.title}
+                            className="w-full h-full object-cover relative z-10 group-hover:scale-105 transition-transform duration-200"
+                            onError={(e) => {
+                              ;(e.target as HTMLElement).style.display = 'none'
+                            }}
+                          />
+                        )}
+                      </div>
 
-                            {isFound && item.foundAt && (
-                              <span className="text-[10px] text-white/40 flex items-center gap-1">
-                                <Clock className="w-2.5 h-2.5" />
-                                {formatRelativeTime(item.foundAt)}
-                              </span>
-                            )}
-                          </div>
+                      {/* Details */}
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-sm font-semibold truncate text-white group-hover:text-amber-300 transition-colors">
+                          {item.title}
+                        </h4>
+                        {item.author && (
+                          <p className="text-xs text-white/50 truncate mt-0.5">{item.author}</p>
+                        )}
 
-                          {/* Title & Author */}
-                          <h4
-                            className={`text-sm font-semibold truncate ${
-                              isFound ? 'text-emerald-100 group-hover:text-white' : 'text-white'
-                            }`}
-                          >
-                            {item.title}
-                          </h4>
-                          {item.author && (
-                            <p className="text-xs text-white/50 truncate mt-0.5">{item.author}</p>
+                        {item.notes && (
+                          <p className="text-[11px] text-white/40 mt-1 italic line-clamp-2">
+                            "{item.notes}"
+                          </p>
+                        )}
+
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                          {item.addedAt && (
+                            <span className="flex items-center gap-1 text-[10px] text-white/40">
+                              <Clock className="w-2.5 h-2.5" />
+                              Added {formatRelativeTime(item.addedAt)}
+                            </span>
                           )}
-
-                          {item.notes && (
-                            <p className="text-[11px] text-white/40 mt-1 italic line-clamp-2">
-                              "{item.notes}"
-                            </p>
+                          {item.isbn && (
+                            <span className="text-[10px] font-mono text-white/30">
+                              ISBN: {item.isbn}
+                            </span>
                           )}
-
-                          {/* Found CTA helper */}
-                          {isFound && (
-                            <div className="mt-2 flex items-center gap-1 text-[11px] text-emerald-400/90 font-medium">
-                              <span>Tap to view scanned book details</span>
-                              <ChevronRight className="w-3 h-3 text-emerald-400" />
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Actions */}
-                        <div
-                          className="flex items-center gap-1 shrink-0"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <a
-                            href={`https://www.google.com/search?q=${encodeURIComponent(`${item.title} ${item.author || ''} book`)}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-2 text-white/40 hover:text-white transition-colors"
-                            title="Search online"
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                          </a>
-                          <button
-                            onClick={() => store.removeWantedBook(item.id)}
-                            className="p-2 text-white/40 hover:text-red-400 transition-colors"
-                            title="Remove from Wanted List"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
                         </div>
                       </div>
+
+                      {/* Actions */}
+                      <div
+                        className="flex items-center gap-1 shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <a
+                          href={`https://www.google.com/search?q=${encodeURIComponent(`${item.title} ${item.author || ''} book`)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2 text-white/40 hover:text-white transition-colors"
+                          title="Search online"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </a>
+                        <button
+                          onClick={() => store.removeWantedBook(item.id)}
+                          className="p-2 text-white/40 hover:text-red-400 transition-colors"
+                          title="Remove from Wanted List"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                  )
-                })
+                  </div>
+                ))
               )}
             </div>
           </>
