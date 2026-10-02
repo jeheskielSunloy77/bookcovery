@@ -75,11 +75,34 @@ function ScannerPage() {
           return
         }
 
-        const detected = response.books || []
-        if (detected.length === 0) {
+        const rawDetected = response.books || []
+        if (rawDetected.length === 0) {
           store.setStatusMessage('No books detected — adjust camera or tap Scan')
           return
         }
+
+        // Hydrate detected books immediately from local history if they were already enriched
+        const booksToEnrich: DetectedBook[] = []
+        const detected: DetectedBook[] = rawDetected.map((book) => {
+          const cached = store.historyBooks.find(
+            (h) =>
+              isSameBook(h, book) &&
+              (h.coverUrl || h.rating || h.synopsis || h.source === 'google-books' || h.source === 'open-library')
+          )
+
+          if (cached) {
+            return {
+              ...book,
+              metadata: {
+                ...cached,
+                id: book.id,
+              },
+            }
+          }
+
+          booksToEnrich.push(book)
+          return book
+        })
 
         // Check if any detected book matches wanted books!
         const wantedMatches = detected.filter((b) => store.isBookWanted(b))
@@ -93,7 +116,7 @@ function ScannerPage() {
           }
         }
 
-        // Persist initial recognized books locally into history
+        // Persist recognized books locally into history
         store.recordBooks(detected)
 
         if (wantedMatches.length > 0) {
@@ -165,13 +188,18 @@ function ScannerPage() {
           return next
         })
 
-        // Books are scanned & recognized! Mark them as currently processing
-        const newIds = detected.map((b) => b.id)
+        // If all detected books are already enriched from local history, skip network lookups!
+        if (booksToEnrich.length === 0) {
+          store.setIsAiProcessing(false)
+          return
+        }
+
+        // Asynchronously enrich new, un-enriched books only
+        const newIds = booksToEnrich.map((b) => b.id)
         setProcessingBookIds((prev) => Array.from(new Set([...prev, ...newIds])))
         store.setProcessingBooksCount((prev) => prev + newIds.length)
 
-        // Asynchronously enrich metadata for each detected book
-        detected.forEach((book) => {
+        booksToEnrich.forEach((book) => {
           enrichBookMetadataFn({
             data: {
               bookId: book.id,
