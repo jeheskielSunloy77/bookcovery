@@ -484,9 +484,13 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
                                 {formatRelativeTime(b.recordedAt)}
                               </span>
                             )}
-                            {b.scanCount && b.scanCount > 1 && (
-                              <span className="text-[10px] text-emerald-400 bg-emerald-500/10 border border-emerald-400/20 px-1 rounded">
-                                {b.scanCount}x
+                            {b.source && (
+                              <span className="text-[10px] text-white/40 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded">
+                                {b.source === 'google-books'
+                                  ? 'Google Books'
+                                  : b.source === 'open-library'
+                                    ? 'Open Library'
+                                    : 'AI'}
                               </span>
                             )}
                           </div>

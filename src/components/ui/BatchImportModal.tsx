@@ -5,7 +5,13 @@ interface BatchImportModalProps {
   isOpen: boolean
   onClose: () => void
   onImport: (
-    items: Array<{ title: string; author?: string; isbn?: string; notes?: string }>
+    items: Array<{
+      title: string
+      author?: string
+      isbn?: string
+      notes?: string
+      coverUrl?: string
+    }>
   ) => { added: number; skipped: number }
 }
 
@@ -14,7 +20,7 @@ const EXAMPLE_JSON = JSON.stringify(
     {
       title: 'Atomic Habits',
       author: 'James Clear',
-      notes: 'Looking for hardcover edition',
+      notes: 'Hardcover edition preferred',
     },
     {
       title: 'Dune',
@@ -51,7 +57,13 @@ export const BatchImportModal: React.FC<BatchImportModalProps> = ({
 
     try {
       const parsed = JSON.parse(trimmed)
-      const list: Array<{ title: string; author?: string; isbn?: string; notes?: string }> = []
+      const list: Array<{
+        title: string
+        author?: string
+        isbn?: string
+        notes?: string
+        coverUrl?: string
+      }> = []
 
       if (Array.isArray(parsed)) {
         for (const item of parsed) {
@@ -59,25 +71,45 @@ export const BatchImportModal: React.FC<BatchImportModalProps> = ({
             const clean = item.trim()
             if (clean) list.push({ title: clean })
           } else if (item && typeof item === 'object') {
-            const title = typeof item.title === 'string' ? item.title.trim() : ''
+            const raw = item as Record<string, unknown>
+            const title = typeof raw.title === 'string' ? raw.title.trim() : ''
             if (title) {
+              const cover =
+                typeof raw.coverUrl === 'string'
+                  ? raw.coverUrl.trim()
+                  : typeof raw.cover === 'string'
+                    ? raw.cover.trim()
+                    : typeof raw.image === 'string'
+                      ? raw.image.trim()
+                      : undefined
               list.push({
                 title,
-                author: typeof item.author === 'string' ? item.author.trim() : undefined,
-                isbn: typeof item.isbn === 'string' ? item.isbn.trim() : undefined,
-                notes: typeof item.notes === 'string' ? item.notes.trim() : undefined,
+                author: typeof raw.author === 'string' ? raw.author.trim() : undefined,
+                isbn: typeof raw.isbn === 'string' ? raw.isbn.trim() : undefined,
+                notes: typeof raw.notes === 'string' ? raw.notes.trim() : undefined,
+                coverUrl: cover,
               })
             }
           }
         }
       } else if (parsed && typeof parsed === 'object') {
-        const title = typeof parsed.title === 'string' ? parsed.title.trim() : ''
+        const raw = parsed as Record<string, unknown>
+        const title = typeof raw.title === 'string' ? raw.title.trim() : ''
         if (title) {
+          const cover =
+            typeof raw.coverUrl === 'string'
+              ? raw.coverUrl.trim()
+              : typeof raw.cover === 'string'
+                ? raw.cover.trim()
+                : typeof raw.image === 'string'
+                  ? raw.image.trim()
+                  : undefined
           list.push({
             title,
-            author: typeof parsed.author === 'string' ? parsed.author.trim() : undefined,
-            isbn: typeof parsed.isbn === 'string' ? parsed.isbn.trim() : undefined,
-            notes: typeof parsed.notes === 'string' ? parsed.notes.trim() : undefined,
+            author: typeof raw.author === 'string' ? raw.author.trim() : undefined,
+            isbn: typeof raw.isbn === 'string' ? raw.isbn.trim() : undefined,
+            notes: typeof raw.notes === 'string' ? raw.notes.trim() : undefined,
+            coverUrl: cover,
           })
         }
       }

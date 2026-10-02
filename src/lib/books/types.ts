@@ -11,6 +11,7 @@ export interface BookMetadata {
   synopsis?: string
   isbn?: string
   source: 'google-books' | 'open-library' | 'ai-estimate'
+  sources?: ('google-books' | 'open-library' | 'ai-estimate')[]
   ratingsBreakdown?: {
     1?: number
     2?: number
@@ -30,10 +31,11 @@ export interface WantedBookItem {
   title: string
   author?: string
   isbn?: string
+  coverUrl?: string
   notes?: string
   addedAt: number
-  foundAt?: number // Timestamp when first spotted by scanner
-  foundBookId?: string // Link to the scanned history book record
+  foundAt?: number // Legacy timestamp
+  foundBookId?: string // Legacy link
 }
 
 export interface DetectedBook {

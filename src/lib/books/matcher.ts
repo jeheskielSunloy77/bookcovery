@@ -110,7 +110,6 @@ export function isBookMatchingWanted(
 
 /**
  * Finds the first matching wanted book from a list of wanted items.
- * Prioritizes un-found items over already found items.
  */
 export function findMatchingWanted(
   book: { title: string; author?: string; isbn?: string },
@@ -118,19 +117,11 @@ export function findMatchingWanted(
 ): WantedBookItem | undefined {
   if (!book || !book.title || !wantedList || wantedList.length === 0) return undefined
 
-  let foundMatch: WantedBookItem | undefined
-
   for (const wanted of wantedList) {
     if (isBookMatchingWanted(book, wanted)) {
-      // If we found an un-found match, immediately return it
-      if (!wanted.foundAt) {
-        return wanted
-      }
-      if (!foundMatch) {
-        foundMatch = wanted
-      }
+      return wanted
     }
   }
 
-  return foundMatch
+  return undefined
 }

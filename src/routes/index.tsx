@@ -5,7 +5,7 @@ import { AROverlay } from '../components/ar/AROverlay'
 import { ScannerControls } from '../components/ui/ScannerControls'
 import { BookDetailSheet } from '../components/ui/BookDetailSheet'
 import { HistoryDrawer } from '../components/ui/HistoryDrawer'
-import { useScannerStore } from '../lib/store/scanner-store'
+import { useScannerStore, isSameBook } from '../lib/store/scanner-store'
 import {
   mapNormalizedBoxToContainer,
   updateTrackedItems,
@@ -93,7 +93,7 @@ function ScannerPage() {
           }
         }
 
-        // Persist initial recognized books locally into history (and auto-mark wanted as found)
+        // Persist initial recognized books locally into history
         store.recordBooks(detected)
 
         if (wantedMatches.length > 0) {
@@ -103,7 +103,7 @@ function ScannerPage() {
         } else {
           store.setStatusMessage(
             detected.length === 1
-              ? `Found: "${detected[0].title}"`
+              ? `Identified: "${detected[0].title}"`
               : `Locked onto ${detected.length} books on shelf`
           )
         }
@@ -131,10 +131,11 @@ function ScannerPage() {
               cHeight
             )
 
-            // Look for matching existing item by title or close proximity
+            // Look for matching existing item by ID, smart title/book match, or close proximity
             const matchIndex = next.findIndex(
               (item) =>
-                item.book.title.toLowerCase() === book.title.toLowerCase() ||
+                item.id === book.id ||
+                isSameBook(item.book, book) ||
                 Math.abs(item.currentBox.centerX - targetBox.centerX) < 50
             )
 
