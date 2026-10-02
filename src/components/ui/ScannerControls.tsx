@@ -42,18 +42,7 @@ export const ScannerControls: React.FC<ScannerControlsProps> = ({
         }}
         className="absolute inset-x-0 z-40 p-4 sm:p-6 flex items-center justify-between pointer-events-none"
       >
-        {/* Brand / Logo */}
-        <div
-          suppressHydrationWarning
-          className="flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-black/60 backdrop-blur-xl border border-white/10 shadow-lg pointer-events-auto"
-        >
-          <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]" />
-          <span className="text-sm font-bold text-white tracking-tight">Bookcovery</span>
-          <span className="text-[10px] uppercase font-mono tracking-widest px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300 font-semibold border border-amber-400/30">
-            AR
-          </span>
-        </div>
-
+<div/>
         {/* Right Tools: Torch, Flip Camera, Scan History */}
         <div suppressHydrationWarning className="flex items-center gap-2 pointer-events-auto">
           {/* Torch toggle */}
