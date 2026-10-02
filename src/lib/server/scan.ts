@@ -3,11 +3,12 @@ import { generateText } from 'ai'
 import { getVisionModel } from '../ai/client'
 import { BOOK_DETECTION_SYSTEM_PROMPT, bookDetectionResponseSchema } from '../ai/prompts'
 import { resolveBookMetadata } from '../books/metadata'
-import type { DetectedBook, ScanResponse } from '../books/types'
+import type { DetectedBook, ScanResponse, BookMetadata } from '../books/types'
 
 export interface ScanInput {
   imageBase64?: string
   isbn?: string
+  enrich?: boolean
 }
 
 function extractJson(text: string): unknown {
@@ -54,25 +55,52 @@ export async function processBookScan(data: ScanInput): Promise<ScanResponse> {
 
     // Fast-path: Barcode ISBN lookup
     if (data.isbn && data.isbn.trim()) {
-      try {
-        const metadata = await resolveBookMetadata('', undefined, data.isbn.trim())
-        const barcodeBook: DetectedBook = {
-          id: `book-barcode-${Date.now()}`,
-          title: metadata.title,
-          author: metadata.author,
-          type: 'cover',
-          box2d: [200, 200, 800, 800],
-          confidence: 0.99,
-          metadata,
-          lastSeenTimestamp: timestamp,
+      const cleanIsbn = data.isbn.trim()
+      if (data.enrich) {
+        try {
+          const metadata = await resolveBookMetadata('', undefined, cleanIsbn)
+          const barcodeBook: DetectedBook = {
+            id: `book-barcode-${timestamp}`,
+            title: metadata.title,
+            author: metadata.author,
+            type: 'cover',
+            box2d: [200, 200, 800, 800],
+            confidence: 0.99,
+            metadata,
+            lastSeenTimestamp: timestamp,
+          }
+          return {
+            books: [barcodeBook],
+            timestamp,
+            source: 'barcode',
+          }
+        } catch (err) {
+          console.error('[Scan] Barcode lookup failed:', err)
         }
-        return {
-          books: [barcodeBook],
-          timestamp,
-          source: 'barcode',
-        }
-      } catch (err) {
-        console.error('[Scan] Barcode lookup failed:', err)
+      }
+
+      // Progressive path: return recognized barcode book immediately
+      const barcodeBook: DetectedBook = {
+        id: `book-barcode-${timestamp}`,
+        title: `ISBN ${cleanIsbn}`,
+        author: 'Searching catalog...',
+        type: 'cover',
+        box2d: [200, 200, 800, 800],
+        confidence: 0.99,
+        metadata: {
+          id: `book-barcode-${timestamp}`,
+          title: `ISBN ${cleanIsbn}`,
+          author: 'Searching catalog...',
+          isbn: cleanIsbn,
+          genres: [],
+          source: 'ai-estimate',
+        },
+        lastSeenTimestamp: timestamp,
+      }
+      return {
+        books: [barcodeBook],
+        timestamp,
+        source: 'barcode',
       }
     }
 
@@ -204,49 +232,75 @@ export async function processBookScan(data: ScanInput): Promise<ScanResponse> {
         }
       }
 
-      // Concurrently resolve rich metadata for all validated detected books
-      const enrichedBooks: DetectedBook[] = await Promise.all(
-        validBooks.map(async (item, index) => {
-          let metadata = await resolveBookMetadata(item.title, item.author)
+      // Build detected books with initial AI metadata
+      const detectedBooks: DetectedBook[] = validBooks.map((item, index) => {
+        const initialMetadata: BookMetadata = {
+          id: `book-${timestamp}-${index}`,
+          title: item.title,
+          author: item.author || 'Unknown Author',
+          rating: item.estimatedRating,
+          synopsis: item.quickSynopsis,
+          genres: item.genres || [],
+          source: 'ai-estimate',
+        }
 
-          // Augment with AI quick synopsis / estimated rating if missing
-          if (!metadata.rating && item.estimatedRating) {
-            metadata = {
-              ...metadata,
-              rating: item.estimatedRating,
-              source: 'ai-estimate',
+        return {
+          id: `book-${timestamp}-${index}`,
+          title: item.title,
+          author: item.author,
+          type: item.type,
+          box2d: item.box2d,
+          confidence: item.confidence,
+          metadata: initialMetadata,
+          lastSeenTimestamp: timestamp,
+        }
+      })
+
+      // If caller requested synchronous enrichment
+      if (data.enrich) {
+        const enrichedBooks: DetectedBook[] = await Promise.all(
+          validBooks.map(async (item, index) => {
+            let metadata = await resolveBookMetadata(item.title, item.author)
+
+            if (!metadata.rating && item.estimatedRating) {
+              metadata = {
+                ...metadata,
+                rating: item.estimatedRating,
+                source: 'ai-estimate',
+              }
             }
-          }
 
-          if (!metadata.synopsis && item.quickSynopsis) {
-            metadata = {
-              ...metadata,
-              synopsis: item.quickSynopsis,
+            if (!metadata.synopsis && item.quickSynopsis) {
+              metadata = {
+                ...metadata,
+                synopsis: item.quickSynopsis,
+              }
             }
-          }
 
-          if (item.genres && item.genres.length > 0 && metadata.genres.length === 0) {
-            metadata = {
-              ...metadata,
-              genres: item.genres,
+            if (item.genres && item.genres.length > 0 && metadata.genres.length === 0) {
+              metadata = {
+                ...metadata,
+                genres: item.genres,
+              }
             }
-          }
 
-          return {
-            id: `book-${timestamp}-${index}`,
-            title: item.title,
-            author: item.author,
-            type: item.type,
-            box2d: item.box2d,
-            confidence: item.confidence,
-            metadata,
-            lastSeenTimestamp: timestamp,
-          }
-        })
-      )
+            return {
+              ...detectedBooks[index],
+              metadata,
+            }
+          })
+        )
 
+        return {
+          books: enrichedBooks,
+          timestamp,
+          source: 'vision',
+        }
+      }
+
+      // Progressive path: return recognized books immediately so UI can display them and show processing count
       return {
-        books: enrichedBooks,
+        books: detectedBooks,
         timestamp,
         source: 'vision',
       }
@@ -266,4 +320,48 @@ export const scanFrameFn = createServerFn({ method: 'POST' })
   .validator((input: ScanInput) => input)
   .handler(async ({ data }): Promise<ScanResponse> => {
     return processBookScan(data)
+  })
+
+export interface EnrichBookInput {
+  bookId: string
+  title: string
+  author?: string
+  isbn?: string
+  estimatedRating?: number
+  quickSynopsis?: string
+  genres?: string[]
+}
+
+export const enrichBookMetadataFn = createServerFn({ method: 'POST' })
+  .validator((input: EnrichBookInput) => input)
+  .handler(async ({ data }): Promise<{ bookId: string; metadata: BookMetadata }> => {
+    let metadata = await resolveBookMetadata(data.title, data.author, data.isbn)
+
+    // Augment with AI quick synopsis / estimated rating if missing
+    if (!metadata.rating && data.estimatedRating) {
+      metadata = {
+        ...metadata,
+        rating: data.estimatedRating,
+        source: 'ai-estimate',
+      }
+    }
+
+    if (!metadata.synopsis && data.quickSynopsis) {
+      metadata = {
+        ...metadata,
+        synopsis: data.quickSynopsis,
+      }
+    }
+
+    if (data.genres && data.genres.length > 0 && metadata.genres.length === 0) {
+      metadata = {
+        ...metadata,
+        genres: data.genres,
+      }
+    }
+
+    return {
+      bookId: data.bookId,
+      metadata,
+    }
   })

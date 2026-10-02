@@ -17,6 +17,7 @@ interface ScannerControlsProps {
   isTorchAvailable: boolean
   onTriggerManualScan: () => void
   isScanning: boolean
+  processingCount?: number
   hasTrackedBooks?: boolean
   onClearTracked?: () => void
 }
@@ -28,10 +29,13 @@ export const ScannerControls: React.FC<ScannerControlsProps> = ({
   isTorchAvailable,
   onTriggerManualScan,
   isScanning,
+  processingCount: propProcessingCount,
   hasTrackedBooks = false,
   onClearTracked,
 }) => {
-  const { isTorchOn, setIsHistoryOpen, historyBooks } = store
+  const { isTorchOn, setIsHistoryOpen, historyBooks, processingBooksCount = 0 } = store
+  const processingCount = propProcessingCount !== undefined ? propProcessingCount : processingBooksCount
+  const isBusy = isScanning || processingCount > 0
 
   return (
     <>
@@ -96,21 +100,32 @@ export const ScannerControls: React.FC<ScannerControlsProps> = ({
 
         {/* Action Controls: Shutter Button & Clear AR */}
         <div suppressHydrationWarning className="pointer-events-auto flex items-center gap-3">
-          {/* Shutter / Instant Manual Trigger Scan Button */}
+          {/* Shutter / Instant Manual Trigger Scan Button & Status */}
           <button
             onClick={onTriggerManualScan}
-            disabled={isScanning}
-            title="Scan books manually if missed by auto-scan"
-            className="px-6 py-3 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-sm flex items-center gap-2 shadow-xl shadow-amber-500/25 active:scale-95 transition-all disabled:opacity-50"
+            disabled={isBusy}
+            title={
+              processingCount > 0
+                ? `Processing ${processingCount} ${processingCount === 1 ? 'book' : 'books'}...`
+                : isScanning
+                  ? 'Analyzing camera frame...'
+                  : 'Scan books manually if missed by auto-scan'
+            }
+            className="px-6 py-3 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-sm flex items-center justify-center gap-2 shadow-xl shadow-amber-500/25 active:scale-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap min-w-[140px]"
           >
-            {isScanning ? (
+            {processingCount > 0 ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin text-black" />
+                <Loader2 className="w-4 h-4 animate-spin text-black shrink-0" />
+                <span>Processing {processingCount} {processingCount === 1 ? 'book' : 'books'}...</span>
+              </>
+            ) : isScanning ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-black shrink-0" />
                 <span>Analyzing...</span>
               </>
             ) : (
               <>
-                <Camera className="w-4 h-4 text-black" />
+                <Camera className="w-4 h-4 text-black shrink-0" />
                 <span>Scan Books</span>
               </>
             )}

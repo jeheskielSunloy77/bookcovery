@@ -45,6 +45,7 @@ export interface ScannerState {
   isAutoScan: boolean
   statusMessage: string
   isAiProcessing: boolean
+  processingBooksCount: number
   lastScanTime: number | null
 }
 
@@ -55,6 +56,7 @@ export function useScannerStore() {
   const [isAutoScan, setIsAutoScan] = useState(true)
   const [statusMessage, setStatusMessage] = useState('')
   const [isAiProcessing, setIsAiProcessing] = useState(false)
+  const [processingBooksCount, setProcessingBooksCount] = useState(0)
   const [lastScanTime, setLastScanTime] = useState<number | null>(null)
   const [historyBooks, setHistoryBooks] = useState<HistoryBookRecord[]>([])
 
@@ -185,6 +187,8 @@ export function useScannerStore() {
     setStatusMessage,
     isAiProcessing,
     setIsAiProcessing,
+    processingBooksCount,
+    setProcessingBooksCount,
     lastScanTime,
     setLastScanTime,
     historyBooks,

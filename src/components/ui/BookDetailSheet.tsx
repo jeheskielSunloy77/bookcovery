@@ -57,7 +57,11 @@ export const BookDetailSheet: React.FC<BookDetailSheetProps> = ({
             )}
             {metadata?.source && (
               <span className="text-[10px] bg-white/10 px-2 py-0.5 rounded-full text-white/60">
-                {metadata.source === 'open-library' ? 'Open Library' : 'Google Books'}
+                {metadata.source === 'open-library'
+                  ? 'Open Library'
+                  : metadata.source === 'google-books'
+                    ? 'Google Books'
+                    : 'AI Identified'}
               </span>
             )}
           </div>
