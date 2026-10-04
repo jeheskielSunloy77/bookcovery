@@ -161,17 +161,18 @@ export const Viewfinder: React.FC<ViewfinderProps> = ({
         const target = localRecognizerRef.current.processFrame(video, isScanning)
 
         // Track when camera moves significantly so we know the scene has changed
-        if (target?.motionScore && target.motionScore > 18) {
+        const currentMotion = target?.motionScore ?? localRecognizerRef.current.lastMotionScore
+        if (currentMotion > 16) {
           hasMovedSinceLastScanRef.current = true
         }
 
-        // Auto-scan ONLY when user has enabled isAutoScan, scene has moved, camera is steady, and cooled down
+        // Auto-scan ONLY when user has enabled isAutoScan, scene has moved, camera is steady, and cooled down (1.6s)
         if (
           isAutoScan &&
           target?.isSteady &&
           !isScanning &&
           hasMovedSinceLastScanRef.current &&
-          now - lastScanTimestampRef.current > 4000
+          now - lastScanTimestampRef.current > 1600
         ) {
           const snapshot = captureVideoSnapshot(video, 1024, 0.75)
           if (snapshot) {

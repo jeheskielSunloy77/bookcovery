@@ -24,13 +24,15 @@ export class LocalRecognizer {
 
   private steadySince: number | null = null
   private motionThreshold = 22 // Threshold for camera movement
-  private minSteadyMs = 600 // Milliseconds of stillness before triggering capture
+  private minSteadyMs = 550 // Milliseconds of stillness before triggering capture
+
+  public lastMotionScore = 0
 
   private smoothedBox: [number, number, number, number] | null = null
   private lastTarget: LocalTargetState | null = null
   private lockedDuringScanBox: [number, number, number, number] | null = null
 
-  constructor(width = 64, height = 64, motionThreshold = 22, minSteadyMs = 600) {
+  constructor(width = 64, height = 64, motionThreshold = 22, minSteadyMs = 550) {
     this.width = width
     this.height = height
     this.motionThreshold = motionThreshold
@@ -94,6 +96,7 @@ export class LocalRecognizer {
     this.prevBuffer.set(data)
 
     const motionScore = diffSum / totalPixels
+    this.lastMotionScore = motionScore
 
     // Check camera steadiness
     const isMoving = motionScore >= this.motionThreshold
@@ -107,11 +110,19 @@ export class LocalRecognizer {
     const isSteady = steadyDurationMs >= this.minSteadyMs
     const isLocked = steadyDurationMs >= 200
 
-    // If user is shaking/panning rapidly and not locked, clear or fade out target
+    // If user is shaking/panning rapidly and not locked, clear or fade out target but preserve motion tracking
     if (motionScore > 38 && !isCurrentlyScanning) {
       this.smoothedBox = null
       this.lastTarget = null
-      return null
+      return {
+        box: [100, 100, 900, 900],
+        confidence: 0,
+        isSteady: false,
+        isLocked: false,
+        source: 'vision',
+        motionScore,
+        steadyDurationMs: 0,
+      }
     }
 
     // Edge gradient & saliency detection

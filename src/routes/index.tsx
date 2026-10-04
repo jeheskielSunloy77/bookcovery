@@ -23,6 +23,8 @@ function ScannerPage() {
   const store = useScannerStore()
   const [trackedItems, setTrackedItems] = useState<TrackedBookItem[]>([])
   const [isScanning, setIsScanning] = useState(false)
+  const isScanningRef = useRef(false)
+  const queuedScanRequestedRef = useRef(false)
   const [processingBookIds, setProcessingBookIds] = useState<string[]>([])
 
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment')
@@ -54,9 +56,13 @@ function ScannerPage() {
   // Scan handler called by stability analyzer, barcode detector, or manual shutter
   const handleScanFrame = useCallback(
     async (base64Data: string, source: 'vision' | 'barcode', isbn?: string) => {
-      if (isScanning || processingBookIds.length > 0) return
+      if (isScanningRef.current) {
+        queuedScanRequestedRef.current = true
+        return
+      }
 
       try {
+        isScanningRef.current = true
         setIsScanning(true)
         store.setIsAiProcessing(true)
         store.setStatusMessage(
@@ -144,7 +150,7 @@ function ScannerPage() {
         const now = Date.now()
 
         setTrackedItems((prev) => {
-          const next = [...prev]
+          let next = [...prev]
 
           detected.forEach((book) => {
             const targetBox = mapNormalizedBoxToContainer(
@@ -155,12 +161,9 @@ function ScannerPage() {
               cHeight
             )
 
-            // Look for matching existing item by ID, smart title/book match, or close proximity
+            // Look for matching existing item by ID or smart title/book match
             const matchIndex = next.findIndex(
-              (item) =>
-                item.id === book.id ||
-                isSameBook(item.book, book) ||
-                Math.abs(item.currentBox.centerX - targetBox.centerX) < 50
+              (item) => item.id === book.id || isSameBook(item.book, book)
             )
 
             if (matchIndex >= 0) {
@@ -186,84 +189,100 @@ function ScannerPage() {
             }
           })
 
+          // Keep tracked items list bounded to the most recent 12 books so screen doesn't clutter
+          if (next.length > 12) {
+            next = next.slice(next.length - 12)
+          }
+
           return next
         })
 
-        // If all detected books are already enriched from local history, skip network lookups!
-        if (booksToEnrich.length === 0) {
-          store.setIsAiProcessing(false)
-          return
-        }
+        // Asynchronously enrich new, un-enriched books in the background without blocking future scans!
+        if (booksToEnrich.length > 0) {
+          const newIds = booksToEnrich.map((b) => b.id)
+          setProcessingBookIds((prev) => Array.from(new Set([...prev, ...newIds])))
+          store.setProcessingBooksCount((prev) => prev + newIds.length)
 
-        // Asynchronously enrich new, un-enriched books only
-        const newIds = booksToEnrich.map((b) => b.id)
-        setProcessingBookIds((prev) => Array.from(new Set([...prev, ...newIds])))
-        store.setProcessingBooksCount((prev) => prev + newIds.length)
-
-        booksToEnrich.forEach((book) => {
-          enrichBookMetadataFn({
-            data: {
-              bookId: book.id,
-              title: book.title,
-              author: book.author,
-              isbn: book.metadata?.isbn,
-            },
-          })
-            .then((res) => {
-              if (res?.metadata) {
-                // Update tracked item in AR overlay
-                setTrackedItems((prev) =>
-                  prev.map((item) =>
-                    item.id === res.bookId
-                      ? {
-                          ...item,
-                          book: { ...item.book, metadata: res.metadata },
-                        }
-                      : item
+          booksToEnrich.forEach((book) => {
+            enrichBookMetadataFn({
+              data: {
+                bookId: book.id,
+                title: book.title,
+                author: book.author,
+                isbn: book.metadata?.isbn,
+              },
+            })
+              .then((res) => {
+                if (res?.metadata) {
+                  // Update tracked item in AR overlay
+                  setTrackedItems((prev) =>
+                    prev.map((item) =>
+                      item.id === res.bookId
+                        ? {
+                            ...item,
+                            book: { ...item.book, metadata: res.metadata },
+                          }
+                        : item
+                    )
                   )
-                )
 
-                // Update selected book if this book is currently inspected in detail sheet
-                store.setSelectedBook((prev) =>
-                  prev?.id === res.bookId ? { ...prev, metadata: res.metadata } : prev
-                )
+                  // Update selected book if this book is currently inspected in detail sheet
+                  store.setSelectedBook((prev) =>
+                    prev?.id === res.bookId ? { ...prev, metadata: res.metadata } : prev
+                  )
 
-                // Update history record with full metadata
-                store.recordBooks([{ ...book, metadata: res.metadata }])
-              }
-            })
-            .catch((err) => {
-              console.error('[ScannerPage] Enrichment failed for:', book.title, err)
-            })
-            .finally(() => {
-              setProcessingBookIds((prev) => {
-                const next = prev.filter((id) => id !== book.id)
-                store.setProcessingBooksCount(next.length)
-                if (next.length === 0) {
-                  store.setIsAiProcessing(false)
+                  // Update history record with full metadata
+                  store.recordBooks([{ ...book, metadata: res.metadata }])
                 }
-                return next
               })
-            })
-        })
+              .catch((err) => {
+                console.error('[ScannerPage] Enrichment failed for:', book.title, err)
+              })
+              .finally(() => {
+                setProcessingBookIds((prev) => {
+                  const next = prev.filter((id) => id !== book.id)
+                  store.setProcessingBooksCount(next.length)
+                  return next
+                })
+              })
+          })
+        }
       } catch (err) {
         console.error('[ScannerPage] Scan error:', err)
         store.setStatusMessage('Recognition failed — retrying')
       } finally {
+        isScanningRef.current = false
         setIsScanning(false)
+        store.setIsAiProcessing(false)
+
+        // If another scan was queued while this one was running, execute it now!
+        if (queuedScanRequestedRef.current && videoRef.current) {
+          queuedScanRequestedRef.current = false
+          const nextSnapshot = captureVideoSnapshot(videoRef.current, 1024, 0.75)
+          if (nextSnapshot) {
+            setTimeout(() => {
+              handleScanFrame(nextSnapshot, 'vision')
+            }, 80)
+          }
+        }
       }
     },
-    [isScanning, processingBookIds.length, store]
+    [store]
   )
 
   // Manual Trigger Scan
   const handleTriggerManualScan = useCallback(() => {
-    if (isScanning || processingBookIds.length > 0 || !videoRef.current) return
+    if (!videoRef.current) return
+    if (isScanningRef.current) {
+      queuedScanRequestedRef.current = true
+      store.setStatusMessage('Queued next scan — hold still on shelf...')
+      return
+    }
     const snapshot = captureVideoSnapshot(videoRef.current, 1024, 0.75)
     if (snapshot) {
       handleScanFrame(snapshot, 'vision')
     }
-  }, [isScanning, processingBookIds.length, handleScanFrame])
+  }, [handleScanFrame, store])
 
   // Clear detected AR books
   const handleClearTracked = useCallback(() => {
@@ -271,7 +290,7 @@ function ScannerPage() {
     setProcessingBookIds([])
     store.setProcessingBooksCount(0)
     store.setIsAiProcessing(false)
-    store.setStatusMessage('Cleared detected books')
+    store.setStatusMessage('Cleared detected books from screen')
   }, [store])
 
   // Camera Switch
@@ -292,7 +311,7 @@ function ScannerPage() {
       {/* 30 FPS Camera & Video Viewfinder */}
       <Viewfinder
         onScanFrame={handleScanFrame}
-        isScanning={isScanning || processingBookIds.length > 0}
+        isScanning={isScanning}
         isAutoScan={store.isAutoScan}
         facingMode={facingMode}
         isTorchOn={store.isTorchOn}

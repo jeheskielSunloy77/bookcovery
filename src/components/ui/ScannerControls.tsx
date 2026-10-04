@@ -35,7 +35,7 @@ export const ScannerControls: React.FC<ScannerControlsProps> = ({
 }) => {
   const { isTorchOn, setIsHistoryOpen, historyBooks, processingBooksCount = 0 } = store
   const processingCount = propProcessingCount !== undefined ? propProcessingCount : processingBooksCount
-  const isBusy = isScanning || processingCount > 0
+  const isBusy = isScanning
 
   return (
     <>
@@ -46,7 +46,24 @@ export const ScannerControls: React.FC<ScannerControlsProps> = ({
         }}
         className="absolute inset-x-0 z-40 p-4 sm:p-6 flex items-center justify-between pointer-events-none"
       >
-<div/>
+        {/* Left Tools: Live Status Pill */}
+        <div suppressHydrationWarning className="flex items-center gap-2 pointer-events-auto">
+          {store.statusMessage ? (
+            <div className="px-3 py-1.5 rounded-2xl bg-black/70 backdrop-blur-xl border border-white/10 text-white/90 text-xs font-medium shadow-lg flex items-center gap-2 max-w-[200px] sm:max-w-xs truncate transition-all">
+              {isScanning ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400 shrink-0" />
+              ) : (
+                <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
+              )}
+              <span className="truncate">{store.statusMessage}</span>
+            </div>
+          ) : (
+            <div className="px-3 py-1.5 rounded-2xl bg-black/50 backdrop-blur-xl border border-white/10 text-white/60 text-xs font-medium shadow-lg">
+              Bookcovery
+            </div>
+          )}
+        </div>
+
         {/* Right Tools: Torch, Flip Camera, Scan History */}
         <div suppressHydrationWarning className="flex items-center gap-2 pointer-events-auto">
           {/* Torch toggle */}
@@ -97,6 +114,18 @@ export const ScannerControls: React.FC<ScannerControlsProps> = ({
         }}
         className="absolute inset-x-0 z-40 px-4 flex flex-col items-center gap-3 pointer-events-none"
       >
+        {/* Non-blocking Background Enrichment Badge */}
+        {processingCount > 0 && (
+          <div
+            suppressHydrationWarning
+            className="pointer-events-auto flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-black/80 backdrop-blur-xl border border-amber-500/30 text-amber-200 text-xs font-medium shadow-2xl transition-all"
+          >
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400 shrink-0" />
+            <span>
+              Fetching details for {processingCount} {processingCount === 1 ? 'book' : 'books'}...
+            </span>
+          </div>
+        )}
 
         {/* Action Controls: Shutter Button & Clear AR */}
         <div suppressHydrationWarning className="pointer-events-auto flex items-center gap-3">
@@ -105,20 +134,13 @@ export const ScannerControls: React.FC<ScannerControlsProps> = ({
             onClick={onTriggerManualScan}
             disabled={isBusy}
             title={
-              processingCount > 0
-                ? `Processing ${processingCount} ${processingCount === 1 ? 'book' : 'books'}...`
-                : isScanning
-                  ? 'Analyzing camera frame...'
-                  : 'Scan books manually if missed by auto-scan'
+              isScanning
+                ? 'Analyzing camera frame...'
+                : 'Scan books on shelf'
             }
             className="px-6 py-3 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-sm flex items-center justify-center gap-2 shadow-xl shadow-amber-500/25 active:scale-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap min-w-[140px]"
           >
-            {processingCount > 0 ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin text-black shrink-0" />
-                <span>Processing {processingCount} {processingCount === 1 ? 'book' : 'books'}...</span>
-              </>
-            ) : isScanning ? (
+            {isScanning ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin text-black shrink-0" />
                 <span>Analyzing...</span>
