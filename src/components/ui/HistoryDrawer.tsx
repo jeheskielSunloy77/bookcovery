@@ -14,6 +14,11 @@ import {
   FileCode,
   Bookmark,
   Sparkles,
+  Filter,
+  MessageSquare,
+  ArrowUpDown,
+  ChevronDown,
+  RotateCcw,
 } from 'lucide-react'
 import { useScannerStore } from '../../lib/store/scanner-store'
 import type { HistoryBookRecord, DetectedBook, WantedBookItem } from '../../lib/books/types'
@@ -52,7 +57,11 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'history' | 'wanted'>('history')
   const [searchQuery, setSearchQuery] = useState('')
+  const [wantedSearchQuery, setWantedSearchQuery] = useState('')
   const [historyFilter, setHistoryFilter] = useState<'all' | 'wanted-only'>('all')
+  const [minRating, setMinRating] = useState<number>(0)
+  const [minReviews, setMinReviews] = useState<number>(0)
+  const [sortBy, setSortBy] = useState<'newest' | 'rating-desc' | 'reviews-desc' | 'title-asc'>('newest')
   const [confirmClearHistory, setConfirmClearHistory] = useState(false)
   const [confirmClearWanted, setConfirmClearWanted] = useState(false)
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false)
@@ -123,25 +132,84 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
     })
   }, [isOpen, activeTab, wantedBooks, historyBooks, store])
 
-  // Filtered History Books
+  const hasActiveFilters =
+    searchQuery.trim().length > 0 ||
+    minRating !== 0 ||
+    minReviews !== 0 ||
+    historyFilter !== 'all' ||
+    sortBy !== 'newest'
+
+  const handleResetFilters = () => {
+    setSearchQuery('')
+    setMinRating(0)
+    setMinReviews(0)
+    setHistoryFilter('all')
+    setSortBy('newest')
+  }
+
+  // Filtered and Sorted History Books
   const filteredHistoryBooks = useMemo(() => {
-    let list = historyBooks
+    let list = [...historyBooks]
+
+    // 1. Wanted filter
     if (historyFilter === 'wanted-only') {
       list = list.filter((b) => wantedMatchedHistoryBookIds.has(b.id))
     }
+
+    // 2. Free text filter (searches title, author, genres, synopsis, and ISBN)
     const q = searchQuery.trim().toLowerCase()
-    if (!q) return list
-    return list.filter(
-      (b) =>
-        b.title.toLowerCase().includes(q) ||
-        b.author.toLowerCase().includes(q) ||
-        b.genres?.some((g) => g.toLowerCase().includes(q))
-    )
-  }, [historyBooks, historyFilter, wantedMatchedHistoryBookIds, searchQuery])
+    if (q) {
+      list = list.filter((b) => {
+        const titleMatch = b.title.toLowerCase().includes(q)
+        const authorMatch = b.author?.toLowerCase().includes(q)
+        const genresMatch = b.genres?.some((g) => g.toLowerCase().includes(q))
+        const synopsisMatch = b.synopsis?.toLowerCase().includes(q)
+        const isbnMatch = b.isbn?.toLowerCase().includes(q)
+        return Boolean(titleMatch || authorMatch || genresMatch || synopsisMatch || isbnMatch)
+      })
+    }
+
+    // 3. Ratings filter
+    if (minRating > 0) {
+      list = list.filter((b) => typeof b.rating === 'number' && b.rating >= minRating)
+    } else if (minRating === -1) {
+      list = list.filter((b) => typeof b.rating === 'number' && b.rating > 0)
+    }
+
+    // 4. Ratings/review count filter
+    if (minReviews > 0) {
+      list = list.filter((b) => typeof b.ratingsCount === 'number' && b.ratingsCount >= minReviews)
+    } else if (minReviews === -1) {
+      list = list.filter((b) => typeof b.ratingsCount === 'number' && b.ratingsCount > 0)
+    }
+
+    // 5. Sorting
+    list.sort((a, b) => {
+      if (sortBy === 'rating-desc') {
+        const rA = a.rating ?? -1
+        const rB = b.rating ?? -1
+        if (rB !== rA) return rB - rA
+        return (b.ratingsCount ?? 0) - (a.ratingsCount ?? 0)
+      }
+      if (sortBy === 'reviews-desc') {
+        const cA = a.ratingsCount ?? -1
+        const cB = b.ratingsCount ?? -1
+        if (cB !== cA) return cB - cA
+        return (b.rating ?? 0) - (a.rating ?? 0)
+      }
+      if (sortBy === 'title-asc') {
+        return a.title.localeCompare(b.title)
+      }
+      // default: newest scanned first
+      return (b.recordedAt || 0) - (a.recordedAt || 0)
+    })
+
+    return list
+  }, [historyBooks, historyFilter, wantedMatchedHistoryBookIds, searchQuery, minRating, minReviews, sortBy])
 
   // Filtered Wanted Books
   const filteredWantedBooks = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase()
+    const q = wantedSearchQuery.trim().toLowerCase()
     if (!q) return wantedBooks
     return wantedBooks.filter(
       (w) =>
@@ -149,17 +217,20 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
         (w.author && w.author.toLowerCase().includes(q)) ||
         (w.notes && w.notes.toLowerCase().includes(q))
     )
-  }, [wantedBooks, searchQuery])
+  }, [wantedBooks, wantedSearchQuery])
 
   if (!isOpen) return null
 
   const handleExportHistory = () => {
+    const isFiltered = hasActiveFilters && filteredHistoryBooks.length !== historyBooks.length
+    const exportList = isFiltered ? filteredHistoryBooks : historyBooks
+
     const markdown = [
       '# Bookcovery Scan History',
       `Exported: ${new Date().toLocaleString()}`,
-      `Total Recorded Books: ${historyBooks.length}`,
+      `Total Recorded Books: ${exportList.length}${isFiltered ? ` (Filtered from ${historyBooks.length} recorded books)` : ''}`,
       '',
-      ...historyBooks.map(
+      ...exportList.map(
         (b) =>
           `- **${b.title}** by ${b.author}${
             wantedMatchedHistoryBookIds.has(b.id) ? ' [🎯 WANTED MATCH]' : ''
@@ -287,10 +358,7 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
           {/* Segmented Tab Switcher */}
           <div className="grid grid-cols-2 p-1 bg-white/5 border border-white/10 rounded-2xl">
             <button
-              onClick={() => {
-                setActiveTab('history')
-                setSearchQuery('')
-              }}
+              onClick={() => setActiveTab('history')}
               className={`py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
                 activeTab === 'history'
                   ? 'bg-amber-400 text-black shadow-lg shadow-amber-500/20'
@@ -311,10 +379,7 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
             </button>
 
             <button
-              onClick={() => {
-                setActiveTab('wanted')
-                setSearchQuery('')
-              }}
+              onClick={() => setActiveTab('wanted')}
               className={`py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
                 activeTab === 'wanted'
                   ? 'bg-amber-400 text-black shadow-lg shadow-amber-500/20'
@@ -339,31 +404,115 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
         {/* TAB 1: SCAN HISTORY */}
         {activeTab === 'history' && (
           <>
-            {/* Search & Actions Bar */}
+            {/* Search & Filter Controls Bar */}
             {historyBooks.length > 0 && (
-              <div className="p-4 border-b border-white/5 bg-white/[0.02] space-y-3">
-                {/* Search Input */}
+              <div className="p-4 border-b border-white/10 bg-white/[0.02] space-y-2.5">
+                {/* Free Text Search Input */}
                 <div className="relative">
                   <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search recorded books..."
-                    className="w-full pl-8 pr-8 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-white/40 focus:outline-none focus:border-amber-400/50 transition-colors"
+                    placeholder="Search by title, author, genre, isbn..."
+                    className="w-full pl-8 pr-8 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-white/40 focus:outline-none focus:border-amber-400/50 transition-colors"
                   />
                   {searchQuery && (
                     <button
                       onClick={() => setSearchQuery('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors"
+                      title="Clear search"
                     >
                       <X className="w-3 h-3" />
                     </button>
                   )}
                 </div>
 
-                {/* Filter Pills & Actions */}
-                <div className="flex items-center justify-between gap-2 flex-wrap">
+                {/* Filter Controls Row: Rating, Review Count, and Sort By */}
+                <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+                  {/* Rating Filter Selector */}
+                  <div className="relative">
+                    <select
+                      value={minRating}
+                      onChange={(e) => setMinRating(Number(e.target.value))}
+                      title="Filter by rating"
+                      className={`w-full appearance-none pl-6 pr-5 py-1.5 rounded-xl text-[11px] font-medium border transition-all cursor-pointer focus:outline-none ${
+                        minRating !== 0
+                          ? 'bg-amber-500/20 border-amber-400/50 text-amber-300 shadow-sm'
+                          : 'bg-white/5 border-white/10 text-white/70 hover:border-white/20 hover:text-white'
+                      }`}
+                    >
+                      <option value={0} className="bg-[#0f172a] text-white">Rating: Any</option>
+                      <option value={4.5} className="bg-[#0f172a] text-white">★ 4.5+ (Top Tier)</option>
+                      <option value={4.0} className="bg-[#0f172a] text-white">★ 4.0+ (Great)</option>
+                      <option value={3.5} className="bg-[#0f172a] text-white">★ 3.5+ (Good)</option>
+                      <option value={3.0} className="bg-[#0f172a] text-white">★ 3.0+ (Average)</option>
+                      <option value={-1} className="bg-[#0f172a] text-white">Rated books only</option>
+                    </select>
+                    <Star
+                      className={`w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${
+                        minRating !== 0 ? 'text-amber-400 fill-amber-400' : 'text-white/40'
+                      }`}
+                    />
+                    <ChevronDown className="w-3 h-3 absolute right-1.5 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
+                  </div>
+
+                  {/* Reviews / Ratings Count Filter Selector */}
+                  <div className="relative">
+                    <select
+                      value={minReviews}
+                      onChange={(e) => setMinReviews(Number(e.target.value))}
+                      title="Filter by review count"
+                      className={`w-full appearance-none pl-6 pr-5 py-1.5 rounded-xl text-[11px] font-medium border transition-all cursor-pointer focus:outline-none ${
+                        minReviews !== 0
+                          ? 'bg-amber-500/20 border-amber-400/50 text-amber-300 shadow-sm'
+                          : 'bg-white/5 border-white/10 text-white/70 hover:border-white/20 hover:text-white'
+                      }`}
+                    >
+                      <option value={0} className="bg-[#0f172a] text-white">Reviews: Any</option>
+                      <option value={50} className="bg-[#0f172a] text-white">50+ reviews</option>
+                      <option value={100} className="bg-[#0f172a] text-white">100+ reviews</option>
+                      <option value={500} className="bg-[#0f172a] text-white">500+ reviews</option>
+                      <option value={1000} className="bg-[#0f172a] text-white">1,000+ reviews</option>
+                      <option value={10000} className="bg-[#0f172a] text-white">10,000+ reviews</option>
+                      <option value={-1} className="bg-[#0f172a] text-white">Has reviews</option>
+                    </select>
+                    <MessageSquare
+                      className={`w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${
+                        minReviews !== 0 ? 'text-amber-400' : 'text-white/40'
+                      }`}
+                    />
+                    <ChevronDown className="w-3 h-3 absolute right-1.5 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
+                  </div>
+
+                  {/* Sort By Selector */}
+                  <div className="relative">
+                    <select
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value as any)}
+                      title="Sort recorded books"
+                      className={`w-full appearance-none pl-6 pr-5 py-1.5 rounded-xl text-[11px] font-medium border transition-all cursor-pointer focus:outline-none ${
+                        sortBy !== 'newest'
+                          ? 'bg-amber-500/20 border-amber-400/50 text-amber-300 shadow-sm'
+                          : 'bg-white/5 border-white/10 text-white/70 hover:border-white/20 hover:text-white'
+                      }`}
+                    >
+                      <option value="newest" className="bg-[#0f172a] text-white">Sort: Recent</option>
+                      <option value="rating-desc" className="bg-[#0f172a] text-white">Sort: Rating (★)</option>
+                      <option value="reviews-desc" className="bg-[#0f172a] text-white">Sort: Reviews (💬)</option>
+                      <option value="title-asc" className="bg-[#0f172a] text-white">Sort: Title (A–Z)</option>
+                    </select>
+                    <ArrowUpDown
+                      className={`w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${
+                        sortBy !== 'newest' ? 'text-amber-400' : 'text-white/40'
+                      }`}
+                    />
+                    <ChevronDown className="w-3 h-3 absolute right-1.5 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* Sub-bar: Status Tabs (All vs Wanted) & Actions (Export, Clear) */}
+                <div className="flex items-center justify-between gap-2 flex-wrap pt-0.5">
                   {/* Filter chips */}
                   <div className="flex items-center gap-1.5">
                     <button
@@ -392,33 +541,33 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
                   </div>
 
                   {/* Actions: Export & Clear */}
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2.5">
                     <button
                       onClick={handleExportHistory}
-                      className="text-xs font-medium text-amber-400/90 hover:text-amber-300 flex items-center gap-1.5 transition-colors"
+                      className="text-xs font-medium text-amber-400/90 hover:text-amber-300 flex items-center gap-1 transition-colors"
                       title="Export history as markdown file"
                     >
                       <Download className="w-3.5 h-3.5" />
-                      <span>Export</span>
+                      <span>Export{hasActiveFilters && filteredHistoryBooks.length !== historyBooks.length ? ` (${filteredHistoryBooks.length})` : ''}</span>
                     </button>
 
                     {confirmClearHistory ? (
-                      <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/30 px-2.5 py-1 rounded-xl animate-in fade-in">
-                        <span className="text-[11px] font-medium text-red-300">
-                          Delete all {historyBooks.length}?
+                      <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/30 px-2 py-0.5 rounded-xl animate-in fade-in">
+                        <span className="text-[10px] font-medium text-red-300">
+                          Delete all?
                         </span>
                         <button
                           onClick={() => {
                             store.clearHistory()
                             setConfirmClearHistory(false)
                           }}
-                          className="text-[11px] px-2 py-0.5 rounded-lg bg-red-500 text-white font-bold hover:bg-red-600 transition-colors shadow-sm"
+                          className="text-[10px] px-2 py-0.5 rounded-lg bg-red-500 text-white font-bold hover:bg-red-600 transition-colors shadow-sm"
                         >
-                          Delete All
+                          Confirm
                         </button>
                         <button
                           onClick={() => setConfirmClearHistory(false)}
-                          className="text-[11px] px-2 py-0.5 rounded-lg bg-white/10 text-white/70 hover:bg-white/20 transition-colors"
+                          className="text-[10px] px-1.5 py-0.5 rounded-lg bg-white/10 text-white/70 hover:bg-white/20 transition-colors"
                         >
                           Cancel
                         </button>
@@ -426,15 +575,139 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
                     ) : (
                       <button
                         onClick={() => setConfirmClearHistory(true)}
-                        className="text-xs font-semibold text-red-400/80 hover:text-red-300 hover:bg-red-500/10 px-2.5 py-1 rounded-xl border border-red-500/20 flex items-center gap-1.5 transition-all"
+                        className="text-xs font-semibold text-red-400/80 hover:text-red-300 hover:bg-red-500/10 px-2 py-1 rounded-xl border border-red-500/20 flex items-center gap-1 transition-all"
                         title="Delete all recorded scan history"
                       >
                         <Trash2 className="w-3.5 h-3.5 text-red-400" />
-                        <span>Delete All History</span>
+                        <span className="hidden sm:inline">Delete All</span>
                       </button>
                     )}
                   </div>
                 </div>
+
+                {/* Active Filter Badges & Counter */}
+                {hasActiveFilters && (
+                  <div className="flex items-center justify-between gap-1.5 pt-1.5 border-t border-white/5 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[10px] text-white/50">
+                        {filteredHistoryBooks.length} of {historyBooks.length}
+                      </span>
+
+                      {searchQuery.trim() && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-400/30 text-[10px] text-amber-300 font-medium">
+                          <Search className="w-2.5 h-2.5 text-amber-400" />
+                          <span className="max-w-[100px] truncate">"{searchQuery.trim()}"</span>
+                          <button
+                            onClick={() => setSearchQuery('')}
+                            className="text-amber-400/70 hover:text-amber-200"
+                            title="Clear search"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </span>
+                      )}
+
+                      {minRating > 0 && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-400/30 text-[10px] text-amber-300 font-medium">
+                          <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
+                          <span>≥ {minRating}★</span>
+                          <button
+                            onClick={() => setMinRating(0)}
+                            className="text-amber-400/70 hover:text-amber-200"
+                            title="Clear rating filter"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </span>
+                      )}
+
+                      {minRating === -1 && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-400/30 text-[10px] text-amber-300 font-medium">
+                          <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
+                          <span>Rated only</span>
+                          <button
+                            onClick={() => setMinRating(0)}
+                            className="text-amber-400/70 hover:text-amber-200"
+                            title="Clear rating filter"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </span>
+                      )}
+
+                      {minReviews > 0 && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-400/30 text-[10px] text-amber-300 font-medium">
+                          <MessageSquare className="w-2.5 h-2.5 text-amber-400" />
+                          <span>≥ {formatCompactNumber(minReviews)} revs</span>
+                          <button
+                            onClick={() => setMinReviews(0)}
+                            className="text-amber-400/70 hover:text-amber-200"
+                            title="Clear reviews filter"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </span>
+                      )}
+
+                      {minReviews === -1 && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-400/30 text-[10px] text-amber-300 font-medium">
+                          <MessageSquare className="w-2.5 h-2.5 text-amber-400" />
+                          <span>Has revs</span>
+                          <button
+                            onClick={() => setMinReviews(0)}
+                            className="text-amber-400/70 hover:text-amber-200"
+                            title="Clear reviews filter"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </span>
+                      )}
+
+                      {historyFilter === 'wanted-only' && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-400/30 text-[10px] text-amber-300 font-medium">
+                          <Target className="w-2.5 h-2.5 text-amber-400" />
+                          <span>Wanted</span>
+                          <button
+                            onClick={() => setHistoryFilter('all')}
+                            className="text-amber-400/70 hover:text-amber-200"
+                            title="Clear wanted filter"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </span>
+                      )}
+
+                      {sortBy !== 'newest' && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-white/10 border border-white/20 text-[10px] text-white/80 font-medium">
+                          <ArrowUpDown className="w-2.5 h-2.5" />
+                          <span>
+                            {sortBy === 'rating-desc'
+                              ? 'Rating'
+                              : sortBy === 'reviews-desc'
+                                ? 'Reviews'
+                                : 'Title A-Z'}
+                          </span>
+                          <button
+                            onClick={() => setSortBy('newest')}
+                            className="text-white/50 hover:text-white"
+                            title="Reset sorting"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={handleResetFilters}
+                      className="text-amber-400/80 hover:text-amber-300 flex items-center gap-1 text-[11px] font-medium transition-colors ml-auto"
+                      title="Clear all active filters"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Reset</span>
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -454,13 +727,19 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
                   </p>
                 </div>
               ) : filteredHistoryBooks.length === 0 ? (
-                <div className="py-12 flex flex-col items-center justify-center text-center text-white/40">
-                  <Search className="w-8 h-8 mb-2 stroke-[1.2] text-white/20" />
-                  <p className="text-xs font-medium text-white/60">
-                    {historyFilter === 'wanted-only'
-                      ? 'No scanned books matching your wanted list yet'
-                      : `No books matching "${searchQuery}"`}
+                <div className="py-12 flex flex-col items-center justify-center text-center p-6 text-white/40">
+                  <Filter className="w-10 h-10 mb-3 stroke-[1.2] text-amber-400/40" />
+                  <p className="text-sm font-semibold text-white/80">No books match your filters</p>
+                  <p className="text-xs text-white/40 mt-1 max-w-[260px]">
+                    No recorded books match the selected search, rating, or review count criteria.
                   </p>
+                  <button
+                    onClick={handleResetFilters}
+                    className="mt-4 px-3.5 py-1.5 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-semibold hover:bg-amber-500/30 transition-all flex items-center gap-1.5 shadow-sm"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Reset all filters</span>
+                  </button>
                 </div>
               ) : (
                 filteredHistoryBooks.map((b) => {
@@ -514,7 +793,7 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
                           <p className="text-xs text-white/50 truncate mt-0.5">{b.author}</p>
 
                           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                            {b.rating && (
+                            {typeof b.rating === 'number' && b.rating > 0 ? (
                               <span className="flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-500/20 border border-amber-400/30 px-1.5 py-0.5 rounded-md">
                                 <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
                                 <span>{b.rating.toFixed(1)}</span>
@@ -524,7 +803,12 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
                                   </span>
                                 )}
                               </span>
-                            )}
+                            ) : b.ratingsCount != null && b.ratingsCount > 0 ? (
+                              <span className="flex items-center gap-1 text-[10px] text-amber-300/80 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded-md">
+                                <MessageSquare className="w-2.5 h-2.5 text-amber-400/70" />
+                                <span>{formatCompactNumber(b.ratingsCount)} reviews</span>
+                              </span>
+                            ) : null}
                             {b.publishedYear && (
                               <span className="text-[10px] text-white/40">{b.publishedYear}</span>
                             )}
@@ -667,14 +951,14 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
                   <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
                   <input
                     type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    value={wantedSearchQuery}
+                    onChange={(e) => setWantedSearchQuery(e.target.value)}
                     placeholder="Search wanted list..."
                     className="w-full pl-8 pr-8 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white placeholder-white/40 focus:outline-none focus:border-amber-400/50"
                   />
-                  {searchQuery && (
+                  {wantedSearchQuery && (
                     <button
-                      onClick={() => setSearchQuery('')}
+                      onClick={() => setWantedSearchQuery('')}
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/40 hover:text-white"
                     >
                       <X className="w-3 h-3" />
