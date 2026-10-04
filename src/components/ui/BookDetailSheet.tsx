@@ -14,6 +14,7 @@ import {
 import type { DetectedBook } from '../../lib/books/types'
 import { useScannerStore } from '../../lib/store/scanner-store'
 import { cleanIsbn } from '../../lib/books/matcher'
+import { getRatingTheme } from '../../lib/format'
 
 interface BookDetailSheetProps {
   book: DetectedBook | null
@@ -30,6 +31,7 @@ export const BookDetailSheet: React.FC<BookDetailSheetProps> = ({
 
   const metadata = book.metadata
   const rating = metadata?.rating
+  const ratingTheme = getRatingTheme(rating)
   const isRecorded = store.isBookInHistory(book) || (metadata ? store.isBookInHistory(metadata) : false)
   const matchedWanted =
     store.getMatchingWantedItem(book) || (metadata ? store.getMatchingWantedItem(metadata) : undefined)
@@ -147,11 +149,20 @@ export const BookDetailSheet: React.FC<BookDetailSheetProps> = ({
                 {/* Rating badge & Review counts */}
                 <div className="flex flex-wrap items-center gap-2 mt-3">
                   {rating ? (
-                    <div className="flex items-center gap-1.5 bg-amber-500/20 border border-amber-400/40 px-2.5 py-1 rounded-xl text-amber-300">
-                      <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                      <span className="text-sm font-bold">{rating.toFixed(1)}</span>
-                      <span className="text-xs text-amber-300/70">/ 5</span>
-                    </div>
+                    <>
+                      <div
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl border ${ratingTheme.bg} ${ratingTheme.border} ${ratingTheme.text}`}
+                      >
+                        <Star className={`w-4 h-4 ${ratingTheme.star}`} />
+                        <span className="text-sm font-bold">{rating.toFixed(1)}</span>
+                        <span className={`text-xs ${ratingTheme.subtext}`}>/ 5</span>
+                      </div>
+                      <span
+                        className={`text-[11px] font-semibold px-2 py-0.5 rounded-lg border ${ratingTheme.bg} ${ratingTheme.border} ${ratingTheme.text}`}
+                      >
+                        {ratingTheme.label}
+                      </span>
+                    </>
                   ) : (
                     <div className="text-xs text-white/40 italic">Rating pending</div>
                   )}
@@ -210,12 +221,13 @@ export const BookDetailSheet: React.FC<BookDetailSheetProps> = ({
               {[5, 4, 3, 2, 1].map((stars) => {
                 const count = breakdown[stars as keyof typeof breakdown] || 0
                 const percent = Math.round((count / totalCount) * 100) || 0
+                const starTheme = getRatingTheme(stars)
                 return (
                   <div key={stars} className="flex items-center gap-3 text-xs text-white/60">
-                    <span className="w-3 font-mono">{stars}★</span>
+                    <span className={`w-3 font-mono font-medium ${starTheme.text}`}>{stars}★</span>
                     <div className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden">
                       <div
-                        className="h-full bg-amber-400 rounded-full transition-all duration-500"
+                        className={`h-full rounded-full transition-all duration-500 ${starTheme.bar}`}
                         style={{ width: `${percent}%` }}
                       />
                     </div>

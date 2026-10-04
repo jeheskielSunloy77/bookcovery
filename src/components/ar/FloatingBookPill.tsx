@@ -1,7 +1,7 @@
 import React from 'react'
 import { Star, ChevronRight, BookOpen, Target } from 'lucide-react'
 import type { TrackedBookItem } from '../../lib/vision/tracker'
-import { formatCompactNumber } from '../../lib/format'
+import { formatCompactNumber, getRatingTheme } from '../../lib/format'
 
 interface FloatingBookPillProps {
   item: TrackedBookItem
@@ -19,6 +19,7 @@ export const FloatingBookPill: React.FC<FloatingBookPillProps> = ({
   const { book, currentBox, opacity } = item
   const rating = book.metadata?.rating
   const ratingsCount = book.metadata?.ratingsCount
+  const ratingTheme = getRatingTheme(rating)
 
   // Calculate pill position: place directly above or below the book box
   const pillLeft = currentBox.centerX
@@ -50,26 +51,31 @@ export const FloatingBookPill: React.FC<FloatingBookPillProps> = ({
         }`}
       >
         {/* Wanted Target Pill Badge */}
-        {isWanted ? (
+        {isWanted && (
           <div className="flex items-center gap-1 bg-amber-400 text-black px-1.5 py-0.5 rounded-md font-black text-[10px] tracking-wider uppercase shadow-sm shrink-0 animate-pulse">
             <Target className="w-3 h-3 text-black stroke-[2.5]" />
             <span>WANTED</span>
           </div>
-        ) : rating ? (
-          <div className="flex items-center gap-1 bg-amber-500/20 px-1.5 py-0.5 rounded-md border border-amber-400/30 text-amber-300 font-semibold text-xs shrink-0">
-            <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+        )}
+
+        {/* Rating Score Badge */}
+        {rating ? (
+          <div
+            className={`flex items-center gap-1 px-1.5 py-0.5 rounded-md border font-semibold text-xs shrink-0 ${ratingTheme.bg} ${ratingTheme.border} ${ratingTheme.text}`}
+          >
+            <Star className={`w-3 h-3 ${ratingTheme.star}`} />
             <span>{rating.toFixed(1)}</span>
             {ratingsCount != null && ratingsCount > 0 && (
-              <span className="text-[10px] text-amber-300/70 font-normal">
+              <span className={`text-[10px] font-normal ${ratingTheme.subtext}`}>
                 ({formatCompactNumber(ratingsCount)})
               </span>
             )}
           </div>
-        ) : (
+        ) : !isWanted ? (
           <div className="p-1 rounded-md bg-white/10 text-emerald-300 shrink-0">
             <BookOpen className="w-3 h-3" />
           </div>
-        )}
+        ) : null}
 
         {/* Title & Author */}
         <div className="flex flex-col max-w-[140px] sm:max-w-[200px]">

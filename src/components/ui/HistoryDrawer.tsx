@@ -24,7 +24,7 @@ import { useScannerStore } from '../../lib/store/scanner-store'
 import type { HistoryBookRecord, DetectedBook, WantedBookItem } from '../../lib/books/types'
 import { BatchImportModal } from './BatchImportModal'
 import { enrichBookMetadataFn } from '../../lib/server/scan'
-import { formatCompactNumber } from '../../lib/format'
+import { formatCompactNumber, getRatingTheme } from '../../lib/format'
 
 interface HistoryDrawerProps {
   isOpen: boolean
@@ -437,21 +437,27 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
                       onChange={(e) => setMinRating(Number(e.target.value))}
                       title="Filter by rating"
                       className={`w-full appearance-none pl-6 pr-5 py-1.5 rounded-xl text-[11px] font-medium border transition-all cursor-pointer focus:outline-none ${
-                        minRating !== 0
-                          ? 'bg-amber-500/20 border-amber-400/50 text-amber-300 shadow-sm'
-                          : 'bg-white/5 border-white/10 text-white/70 hover:border-white/20 hover:text-white'
+                        minRating > 0
+                          ? `${getRatingTheme(minRating).bg} ${getRatingTheme(minRating).border} ${getRatingTheme(minRating).text} shadow-sm`
+                          : minRating === -1
+                            ? 'bg-amber-500/20 border-amber-400/50 text-amber-300 shadow-sm'
+                            : 'bg-white/5 border-white/10 text-white/70 hover:border-white/20 hover:text-white'
                       }`}
                     >
                       <option value={0} className="bg-[#0f172a] text-white">Rating: Any</option>
-                      <option value={4.5} className="bg-[#0f172a] text-white">★ 4.5+ (Top Tier)</option>
-                      <option value={4.0} className="bg-[#0f172a] text-white">★ 4.0+ (Great)</option>
-                      <option value={3.5} className="bg-[#0f172a] text-white">★ 3.5+ (Good)</option>
-                      <option value={3.0} className="bg-[#0f172a] text-white">★ 3.0+ (Average)</option>
+                      <option value={4.5} className="bg-[#0f172a] text-emerald-400">★ 4.5+ (Top Tier)</option>
+                      <option value={4.0} className="bg-[#0f172a] text-green-400">★ 4.0+ (Great)</option>
+                      <option value={3.5} className="bg-[#0f172a] text-amber-400">★ 3.5+ (Good)</option>
+                      <option value={3.0} className="bg-[#0f172a] text-orange-400">★ 3.0+ (Average)</option>
                       <option value={-1} className="bg-[#0f172a] text-white">Rated books only</option>
                     </select>
                     <Star
                       className={`w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none transition-colors ${
-                        minRating !== 0 ? 'text-amber-400 fill-amber-400' : 'text-white/40'
+                        minRating > 0
+                          ? getRatingTheme(minRating).star
+                          : minRating === -1
+                            ? 'text-amber-400 fill-amber-400'
+                            : 'text-white/40'
                       }`}
                     />
                     <ChevronDown className="w-3 h-3 absolute right-1.5 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
@@ -608,17 +614,24 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
                       )}
 
                       {minRating > 0 && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/15 border border-amber-400/30 text-[10px] text-amber-300 font-medium">
-                          <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
-                          <span>≥ {minRating}★</span>
-                          <button
-                            onClick={() => setMinRating(0)}
-                            className="text-amber-400/70 hover:text-amber-200"
-                            title="Clear rating filter"
-                          >
-                            <X className="w-2.5 h-2.5" />
-                          </button>
-                        </span>
+                        (() => {
+                          const filterTheme = getRatingTheme(minRating)
+                          return (
+                            <span
+                              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[10px] font-medium ${filterTheme.bg} ${filterTheme.border} ${filterTheme.text}`}
+                            >
+                              <Star className={`w-2.5 h-2.5 ${filterTheme.star}`} />
+                              <span>≥ {minRating}★</span>
+                              <button
+                                onClick={() => setMinRating(0)}
+                                className="opacity-70 hover:opacity-100 transition-opacity ml-0.5"
+                                title="Clear rating filter"
+                              >
+                                <X className="w-2.5 h-2.5" />
+                              </button>
+                            </span>
+                          )
+                        })()
                       )}
 
                       {minRating === -1 && (
@@ -794,15 +807,22 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
 
                           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                             {typeof b.rating === 'number' && b.rating > 0 ? (
-                              <span className="flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-500/20 border border-amber-400/30 px-1.5 py-0.5 rounded-md">
-                                <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
-                                <span>{b.rating.toFixed(1)}</span>
-                                {b.ratingsCount != null && b.ratingsCount > 0 && (
-                                  <span className="text-[9px] text-amber-300/70 font-normal">
-                                    ({formatCompactNumber(b.ratingsCount)})
+                              (() => {
+                                const rTheme = getRatingTheme(b.rating)
+                                return (
+                                  <span
+                                    className={`flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-md border ${rTheme.bg} ${rTheme.border} ${rTheme.text}`}
+                                  >
+                                    <Star className={`w-2.5 h-2.5 ${rTheme.star}`} />
+                                    <span>{b.rating.toFixed(1)}</span>
+                                    {b.ratingsCount != null && b.ratingsCount > 0 && (
+                                      <span className={`text-[9px] font-normal ${rTheme.subtext}`}>
+                                        ({formatCompactNumber(b.ratingsCount)})
+                                      </span>
+                                    )}
                                   </span>
-                                )}
-                              </span>
+                                )
+                              })()
                             ) : b.ratingsCount != null && b.ratingsCount > 0 ? (
                               <span className="flex items-center gap-1 text-[10px] text-amber-300/80 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded-md">
                                 <MessageSquare className="w-2.5 h-2.5 text-amber-400/70" />
