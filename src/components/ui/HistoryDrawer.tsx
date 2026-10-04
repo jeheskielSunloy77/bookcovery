@@ -19,6 +19,7 @@ import { useScannerStore } from '../../lib/store/scanner-store'
 import type { HistoryBookRecord, DetectedBook, WantedBookItem } from '../../lib/books/types'
 import { BatchImportModal } from './BatchImportModal'
 import { enrichBookMetadataFn } from '../../lib/server/scan'
+import { formatCompactNumber } from '../../lib/format'
 
 interface HistoryDrawerProps {
   isOpen: boolean
@@ -163,6 +164,8 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
           `- **${b.title}** by ${b.author}${
             wantedMatchedHistoryBookIds.has(b.id) ? ' [🎯 WANTED MATCH]' : ''
           }${b.rating ? ` — ★ ${b.rating.toFixed(1)}/5` : ''}${
+            b.ratingsCount ? ` (${b.ratingsCount.toLocaleString()} reviews)` : ''
+          }${
             b.publishedYear ? ` (${b.publishedYear})` : ''
           }${b.recordedAt ? ` [Scanned: ${new Date(b.recordedAt).toLocaleString()}]` : ''}`
       ),
@@ -514,7 +517,12 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
                             {b.rating && (
                               <span className="flex items-center gap-1 text-[10px] font-bold text-amber-300 bg-amber-500/20 border border-amber-400/30 px-1.5 py-0.5 rounded-md">
                                 <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400" />
-                                {b.rating.toFixed(1)}
+                                <span>{b.rating.toFixed(1)}</span>
+                                {b.ratingsCount != null && b.ratingsCount > 0 && (
+                                  <span className="text-[9px] text-amber-300/70 font-normal">
+                                    ({formatCompactNumber(b.ratingsCount)})
+                                  </span>
+                                )}
                               </span>
                             )}
                             {b.publishedYear && (

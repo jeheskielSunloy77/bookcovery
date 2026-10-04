@@ -207,9 +207,9 @@ export async function resolveBookMetadata(
   // 1. Try Google Books (if available / non-exhausted)
   const googleData = await fetchFromGoogleBooks(cleanTitle, cleanAuthor, cleanIsbn)
 
-  // 2. Try Open Library
+  // 2. Try Open Library if Google Books is missing key data or ratings count
   let openLibData: Partial<BookMetadata> | null = null
-  if (!googleData || !googleData.rating || !googleData.coverUrl) {
+  if (!googleData || !googleData.rating || !googleData.coverUrl || !googleData.ratingsCount) {
     openLibData = await fetchFromOpenLibrary(cleanTitle, cleanAuthor, cleanIsbn)
   }
 
@@ -217,13 +217,21 @@ export async function resolveBookMetadata(
   const finalTitle = googleData?.title || openLibData?.title || title
   const finalAuthor = googleData?.author || openLibData?.author || author || 'Unknown Author'
   const finalRating = googleData?.rating ?? openLibData?.rating
-  const finalRatingsCount = googleData?.ratingsCount ?? openLibData?.ratingsCount
+  let finalRatingsCount = googleData?.ratingsCount ?? openLibData?.ratingsCount
+  if (!finalRatingsCount && openLibData?.ratingsBreakdown) {
+    const sum = Object.values(openLibData.ratingsBreakdown).reduce((acc: number, val) => acc + (val || 0), 0)
+    if (sum > 0) finalRatingsCount = sum
+  }
   const finalCoverUrl = googleData?.coverUrl || openLibData?.coverUrl
   const finalYear = googleData?.publishedYear || openLibData?.publishedYear
   const finalGenres = (googleData?.genres?.length ? googleData.genres : openLibData?.genres) || []
   const finalPageCount = googleData?.pageCount || openLibData?.pageCount
   const finalSynopsis = googleData?.synopsis || openLibData?.synopsis
   const finalSource = (googleData?.source || openLibData?.source || 'open-library') as 'google-books' | 'open-library'
+
+  const sources: ('google-books' | 'open-library')[] = []
+  if (googleData) sources.push('google-books')
+  if (openLibData) sources.push('open-library')
 
   const metadata: BookMetadata = {
     id: `book-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -238,6 +246,7 @@ export async function resolveBookMetadata(
     synopsis: finalSynopsis,
     isbn,
     source: finalSource,
+    sources: sources.length > 0 ? sources : undefined,
     ratingsBreakdown: openLibData?.ratingsBreakdown,
   }
 

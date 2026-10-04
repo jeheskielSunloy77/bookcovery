@@ -37,7 +37,10 @@ export const BookDetailSheet: React.FC<BookDetailSheetProps> = ({
 
   // Calculate rating breakdown percentages if available
   const breakdown = metadata?.ratingsBreakdown
-  const totalCount = metadata?.ratingsCount || 0
+  const breakdownSum = breakdown
+    ? Object.values(breakdown).reduce((acc: number, val) => acc + (val || 0), 0)
+    : 0
+  const totalCount = metadata?.ratingsCount || breakdownSum || 0
 
   return (
     <div
@@ -155,7 +158,7 @@ export const BookDetailSheet: React.FC<BookDetailSheetProps> = ({
 
                   {totalCount > 0 && (
                     <span className="text-xs text-white/50">
-                      ({totalCount.toLocaleString()} reviews)
+                      ({totalCount.toLocaleString()} {totalCount === 1 ? 'rating' : 'ratings'})
                     </span>
                   )}
                 </div>
@@ -196,9 +199,14 @@ export const BookDetailSheet: React.FC<BookDetailSheetProps> = ({
           {/* Rating Distribution (if breakdown available) */}
           {breakdown && totalCount > 0 && (
             <div className="bg-white/5 rounded-2xl p-4 border border-white/5 space-y-2">
-              <span className="text-xs font-semibold text-white/70 block">
-                Rating Distribution
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-white/70 block">
+                  Rating Distribution
+                </span>
+                <span className="text-[11px] text-white/40">
+                  {totalCount.toLocaleString()} total
+                </span>
+              </div>
               {[5, 4, 3, 2, 1].map((stars) => {
                 const count = breakdown[stars as keyof typeof breakdown] || 0
                 const percent = Math.round((count / totalCount) * 100) || 0
@@ -211,7 +219,9 @@ export const BookDetailSheet: React.FC<BookDetailSheetProps> = ({
                         style={{ width: `${percent}%` }}
                       />
                     </div>
-                    <span className="w-9 text-right text-[11px] text-white/40">{percent}%</span>
+                    <span className="w-16 text-right text-[11px] text-white/40">
+                      {count.toLocaleString()} ({percent}%)
+                    </span>
                   </div>
                 )
               })}

@@ -1,6 +1,7 @@
 import React from 'react'
 import { Star, ChevronRight, BookOpen, Target } from 'lucide-react'
 import type { TrackedBookItem } from '../../lib/vision/tracker'
+import { formatCompactNumber } from '../../lib/format'
 
 interface FloatingBookPillProps {
   item: TrackedBookItem
@@ -17,6 +18,7 @@ export const FloatingBookPill: React.FC<FloatingBookPillProps> = ({
 }) => {
   const { book, currentBox, opacity } = item
   const rating = book.metadata?.rating
+  const ratingsCount = book.metadata?.ratingsCount
 
   // Calculate pill position: place directly above or below the book box
   const pillLeft = currentBox.centerX
@@ -57,6 +59,11 @@ export const FloatingBookPill: React.FC<FloatingBookPillProps> = ({
           <div className="flex items-center gap-1 bg-amber-500/20 px-1.5 py-0.5 rounded-md border border-amber-400/30 text-amber-300 font-semibold text-xs shrink-0">
             <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
             <span>{rating.toFixed(1)}</span>
+            {ratingsCount != null && ratingsCount > 0 && (
+              <span className="text-[10px] text-amber-300/70 font-normal">
+                ({formatCompactNumber(ratingsCount)})
+              </span>
+            )}
           </div>
         ) : (
           <div className="p-1 rounded-md bg-white/10 text-emerald-300 shrink-0">

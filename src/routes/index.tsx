@@ -13,6 +13,7 @@ import {
 } from '../lib/vision/tracker'
 import { scanFrameFn, enrichBookMetadataFn } from '../lib/server/scan'
 import { captureVideoSnapshot } from '../lib/vision/frame-stability'
+import type { DetectedBook } from '../lib/books/types'
 
 export const Route = createFileRoute('/')({
   component: ScannerPage,
