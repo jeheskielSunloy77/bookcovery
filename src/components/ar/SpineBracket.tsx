@@ -12,20 +12,24 @@ export const SpineBracket: React.FC<SpineBracketProps> = ({
   isSelected,
   isWanted = false,
 }) => {
-  const { currentBox, opacity, book } = item
+  const isPending = book.isPendingAnalysis
   const isSpine = book.type === 'spine'
 
-  const bracketColor = isWanted
-    ? 'border-amber-400'
-    : isSelected
+  const bracketColor = isPending
+    ? 'border-amber-400 animate-pulse'
+    : isWanted
       ? 'border-amber-400'
-      : 'border-emerald-400/80 group-hover:border-emerald-300'
+      : isSelected
+        ? 'border-amber-400'
+        : 'border-emerald-400/80 group-hover:border-emerald-300'
 
-  const glowColor = isWanted
-    ? 'rgba(245, 158, 11, 0.45)'
-    : isSelected
-      ? 'rgba(245, 158, 11, 0.25)'
-      : 'rgba(16, 185, 129, 0.12)'
+  const glowColor = isPending
+    ? 'rgba(245, 158, 11, 0.5)'
+    : isWanted
+      ? 'rgba(245, 158, 11, 0.45)'
+      : isSelected
+        ? 'rgba(245, 158, 11, 0.25)'
+        : 'rgba(16, 185, 129, 0.12)'
 
   return (
     <div
@@ -57,8 +61,13 @@ export const SpineBracket: React.FC<SpineBracketProps> = ({
         className={`absolute bottom-0 right-0 w-3.5 h-3.5 border-b-2 border-r-2 ${bracketColor} rounded-br-sm`}
       />
 
+      {/* Scanning laser beam indicator during AI analysis */}
+      {isPending && (
+        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-0.5 bg-gradient-to-r from-transparent via-amber-300 to-transparent shadow-[0_0_12px_rgba(245,158,11,0.9)] animate-pulse" />
+      )}
+
       {/* Spine centerline guide (subtle dashed vertical beam for shelf spine books) */}
-      {isSpine && (
+      {isSpine && !isPending && (
         <div
           className={`absolute inset-y-2 left-1/2 -translate-x-1/2 w-[1px] bg-gradient-to-b ${
             isWanted

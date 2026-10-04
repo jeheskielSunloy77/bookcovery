@@ -48,6 +48,7 @@ export interface DetectedBook {
   confidence: number
   metadata?: BookMetadata
   lastSeenTimestamp: number
+  isPendingAnalysis?: boolean
 }
 
 export interface ScanResponse {

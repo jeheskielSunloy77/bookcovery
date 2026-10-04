@@ -7,6 +7,7 @@ import {
   Camera,
   Loader2,
   Trash2,
+  Check,
 } from 'lucide-react'
 import { useScannerStore } from '../../lib/store/scanner-store'
 
@@ -17,6 +18,8 @@ interface ScannerControlsProps {
   isTorchAvailable: boolean
   onTriggerManualScan: () => void
   isScanning: boolean
+  activeScansCount?: number
+  justCaptured?: boolean
   processingCount?: number
   hasTrackedBooks?: boolean
   onClearTracked?: () => void
@@ -29,13 +32,15 @@ export const ScannerControls: React.FC<ScannerControlsProps> = ({
   isTorchAvailable,
   onTriggerManualScan,
   isScanning,
+  activeScansCount = 0,
+  justCaptured = false,
   processingCount: propProcessingCount,
   hasTrackedBooks = false,
   onClearTracked,
 }) => {
   const { isTorchOn, setIsHistoryOpen, historyBooks, processingBooksCount = 0 } = store
   const processingCount = propProcessingCount !== undefined ? propProcessingCount : processingBooksCount
-  const isBusy = isScanning
+  const isBusy = isScanning || activeScansCount >= 3
 
   return (
     <>
@@ -114,8 +119,21 @@ export const ScannerControls: React.FC<ScannerControlsProps> = ({
         }}
         className="absolute inset-x-0 z-40 px-4 flex flex-col items-center gap-3 pointer-events-none"
       >
+        {/* Active In-flight AI Analysis Counter Badge */}
+        {activeScansCount > 0 && (
+          <div
+            suppressHydrationWarning
+            className="pointer-events-auto flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-black/85 backdrop-blur-xl border border-amber-500/40 text-amber-200 text-xs font-semibold shadow-2xl transition-all animate-pulse"
+          >
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400 shrink-0" />
+            <span>
+              Analyzing {activeScansCount} {activeScansCount === 1 ? 'frame' : 'frames'} in background...
+            </span>
+          </div>
+        )}
+
         {/* Non-blocking Background Enrichment Badge */}
-        {processingCount > 0 && (
+        {processingCount > 0 && activeScansCount === 0 && (
           <div
             suppressHydrationWarning
             className="pointer-events-auto flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-black/80 backdrop-blur-xl border border-amber-500/30 text-amber-200 text-xs font-medium shadow-2xl transition-all"
@@ -133,14 +151,19 @@ export const ScannerControls: React.FC<ScannerControlsProps> = ({
           <button
             onClick={onTriggerManualScan}
             disabled={isBusy}
-            title={
-              isScanning
-                ? 'Analyzing camera frame...'
-                : 'Scan books on shelf'
-            }
-            className="px-6 py-3 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-bold text-sm flex items-center justify-center gap-2 shadow-xl shadow-amber-500/25 active:scale-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap min-w-[140px]"
+            title="Scan books on shelf"
+            className={`px-6 py-3 rounded-full text-black font-bold text-sm flex items-center justify-center gap-2 shadow-xl active:scale-95 transition-all whitespace-nowrap min-w-[140px] ${
+              justCaptured
+                ? 'bg-emerald-400 text-black shadow-emerald-500/30 scale-105'
+                : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 shadow-amber-500/25 disabled:opacity-60 disabled:cursor-not-allowed'
+            }`}
           >
-            {isScanning ? (
+            {justCaptured ? (
+              <>
+                <Check className="w-4 h-4 stroke-[3] text-black shrink-0" />
+                <span>Captured ✓</span>
+              </>
+            ) : isBusy ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin text-black shrink-0" />
                 <span>Analyzing...</span>

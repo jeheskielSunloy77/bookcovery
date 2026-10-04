@@ -1,5 +1,5 @@
 import React from 'react'
-import { Star, ChevronRight, BookOpen, Target } from 'lucide-react'
+import { Star, ChevronRight, BookOpen, Target, Loader2 } from 'lucide-react'
 import type { TrackedBookItem } from '../../lib/vision/tracker'
 import { formatCompactNumber, getRatingTheme } from '../../lib/format'
 
@@ -17,6 +17,7 @@ export const FloatingBookPill: React.FC<FloatingBookPillProps> = ({
   isWanted = false,
 }) => {
   const { book, currentBox, opacity } = item
+  const isPending = book.isPendingAnalysis
   const rating = book.metadata?.rating
   const ratingsCount = book.metadata?.ratingsCount
   const ratingTheme = getRatingTheme(rating)
@@ -36,27 +37,37 @@ export const FloatingBookPill: React.FC<FloatingBookPillProps> = ({
       }}
       onClick={(e) => {
         e.stopPropagation()
-        onSelect(item)
+        if (!isPending) {
+          onSelect(item)
+        }
       }}
-      aria-label={`Inspect book: ${book.title}`}
+      aria-label={isPending ? 'Analyzing book spine' : `Inspect book: ${book.title}`}
       className="absolute z-30 cursor-pointer pointer-events-auto transition-transform duration-200 select-none group text-left p-0 bg-transparent border-none outline-none focus:ring-2 focus:ring-amber-400 rounded-full"
     >
-      <div
-        className={`flex items-center gap-2 px-3 py-1.5 rounded-full border backdrop-blur-xl shadow-2xl transition-all duration-300 ${
-          isWanted
-            ? 'bg-amber-500/35 border-amber-400 text-white shadow-[0_0_25px_rgba(245,158,11,0.45)] ring-2 ring-amber-400/60'
-            : isSelected
-              ? 'bg-amber-500/25 border-amber-400/80 text-white shadow-amber-500/20'
-              : 'bg-black/75 hover:bg-black/90 border-white/20 hover:border-amber-400/50 text-white shadow-black/60'
-        }`}
-      >
-        {/* Wanted Target Pill Badge */}
-        {isWanted && (
-          <div className="flex items-center gap-1 bg-amber-400 text-black px-1.5 py-0.5 rounded-md font-black text-[10px] tracking-wider uppercase shadow-sm shrink-0 animate-pulse">
-            <Target className="w-3 h-3 text-black stroke-[2.5]" />
-            <span>WANTED</span>
-          </div>
-        )}
+      {isPending ? (
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-amber-400/80 bg-black/85 backdrop-blur-xl shadow-2xl text-amber-300 shadow-[0_0_20px_rgba(245,158,11,0.35)] ring-1 ring-amber-400/40">
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-400 shrink-0" />
+          <span className="text-xs font-semibold text-amber-200 tracking-wide">
+            Analyzing spine...
+          </span>
+        </div>
+      ) : (
+        <div
+          className={`flex items-center gap-2 px-3 py-1.5 rounded-full border backdrop-blur-xl shadow-2xl transition-all duration-300 ${
+            isWanted
+              ? 'bg-amber-500/35 border-amber-400 text-white shadow-[0_0_25px_rgba(245,158,11,0.45)] ring-2 ring-amber-400/60'
+              : isSelected
+                ? 'bg-amber-500/25 border-amber-400/80 text-white shadow-amber-500/20'
+                : 'bg-black/75 hover:bg-black/90 border-white/20 hover:border-amber-400/50 text-white shadow-black/60'
+          }`}
+        >
+          {/* Wanted Target Pill Badge */}
+          {isWanted && (
+            <div className="flex items-center gap-1 bg-amber-400 text-black px-1.5 py-0.5 rounded-md font-black text-[10px] tracking-wider uppercase shadow-sm shrink-0 animate-pulse">
+              <Target className="w-3 h-3 text-black stroke-[2.5]" />
+              <span>WANTED</span>
+            </div>
+          )}
 
         {/* Rating Score Badge */}
         {rating ? (
@@ -103,6 +114,7 @@ export const FloatingBookPill: React.FC<FloatingBookPillProps> = ({
           }`}
         />
       </div>
+      )}
 
       {/* Target indicator arrow pointer */}
       <div

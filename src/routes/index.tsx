@@ -22,8 +22,11 @@ export const Route = createFileRoute('/')({
 function ScannerPage() {
   const store = useScannerStore()
   const [trackedItems, setTrackedItems] = useState<TrackedBookItem[]>([])
-  const [isScanning, setIsScanning] = useState(false)
-  const isScanningRef = useRef(false)
+  const [activeScansCount, setActiveScansCount] = useState(0)
+  const activeScansCountRef = useRef(0)
+  const [justCaptured, setJustCaptured] = useState(false)
+  const latestTargetBoxRef = useRef<[number, number, number, number] | null>(null)
+  const flashTriggerRef = useRef<(() => void) | null>(null)
   const queuedScanRequestedRef = useRef(false)
   const [processingBookIds, setProcessingBookIds] = useState<string[]>([])
 
@@ -55,20 +58,66 @@ function ScannerPage() {
 
   // Scan handler called by stability analyzer, barcode detector, or manual shutter
   const handleScanFrame = useCallback(
-    async (base64Data: string, source: 'vision' | 'barcode', isbn?: string) => {
-      if (isScanningRef.current) {
+    async (
+      base64Data: string,
+      source: 'vision' | 'barcode',
+      isbn?: string,
+      targetBox?: [number, number, number, number]
+    ) => {
+      if (activeScansCountRef.current >= 3) {
         queuedScanRequestedRef.current = true
         return
       }
 
-      try {
-        isScanningRef.current = true
-        setIsScanning(true)
-        store.setIsAiProcessing(true)
-        store.setStatusMessage(
-          source === 'barcode' ? 'Reading ISBN barcode...' : 'Identifying books with AI...'
-        )
+      // Shutter tactile feedback
+      setJustCaptured(true)
+      setTimeout(() => setJustCaptured(false), 380)
 
+      if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+        navigator.vibrate?.([25])
+      }
+
+      // Create an immediate visual pending bracket right where the book is on camera!
+      const pendingId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+      const container = containerRef.current
+      const video = videoRef.current
+
+      const cWidth = container?.clientWidth || window.innerWidth
+      const cHeight = container?.clientHeight || window.innerHeight
+      const vWidth = video?.videoWidth || 1280
+      const vHeight = video?.videoHeight || 720
+
+      const effectiveBox = targetBox || latestTargetBoxRef.current || [200, 300, 800, 700]
+      const initialTargetBox = mapNormalizedBoxToContainer(effectiveBox, vWidth, vHeight, cWidth, cHeight)
+
+      const pendingItem: TrackedBookItem = {
+        id: pendingId,
+        book: {
+          id: pendingId,
+          title: 'Analyzing spine...',
+          type: 'spine',
+          box2d: effectiveBox,
+          confidence: 0.8,
+          lastSeenTimestamp: Date.now(),
+          isPendingAnalysis: true,
+        },
+        currentBox: { ...initialTargetBox },
+        targetBox: initialTargetBox,
+        opacity: 1,
+        createdAt: Date.now(),
+        lastUpdated: Date.now(),
+      }
+
+      setTrackedItems((prev) => [...prev, pendingItem])
+
+      activeScansCountRef.current += 1
+      setActiveScansCount(activeScansCountRef.current)
+      store.setIsAiProcessing(true)
+      store.setStatusMessage(
+        source === 'barcode' ? 'Reading ISBN barcode...' : 'Analyzing book spine with AI...'
+      )
+
+      try {
         const response = await scanFrameFn({
           data: {
             imageBase64: base64Data,
@@ -76,6 +125,9 @@ function ScannerPage() {
             enrich: false,
           },
         })
+
+        // Remove the temporary pending item from tracked items
+        setTrackedItems((prev) => prev.filter((item) => item.id !== pendingId))
 
         if (response.error) {
           store.setStatusMessage(`Scan notice: ${response.error}`)
@@ -251,9 +303,11 @@ function ScannerPage() {
         console.error('[ScannerPage] Scan error:', err)
         store.setStatusMessage('Recognition failed — retrying')
       } finally {
-        isScanningRef.current = false
-        setIsScanning(false)
-        store.setIsAiProcessing(false)
+        activeScansCountRef.current = Math.max(0, activeScansCountRef.current - 1)
+        setActiveScansCount(activeScansCountRef.current)
+        if (activeScansCountRef.current === 0) {
+          store.setIsAiProcessing(false)
+        }
 
         // If another scan was queued while this one was running, execute it now!
         if (queuedScanRequestedRef.current && videoRef.current) {
@@ -261,7 +315,7 @@ function ScannerPage() {
           const nextSnapshot = captureVideoSnapshot(videoRef.current, 1024, 0.75)
           if (nextSnapshot) {
             setTimeout(() => {
-              handleScanFrame(nextSnapshot, 'vision')
+              handleScanFrame(nextSnapshot, 'vision', undefined, latestTargetBoxRef.current || undefined)
             }, 80)
           }
         }
@@ -273,16 +327,12 @@ function ScannerPage() {
   // Manual Trigger Scan
   const handleTriggerManualScan = useCallback(() => {
     if (!videoRef.current) return
-    if (isScanningRef.current) {
-      queuedScanRequestedRef.current = true
-      store.setStatusMessage('Queued next scan — hold still on shelf...')
-      return
-    }
+    flashTriggerRef.current?.()
     const snapshot = captureVideoSnapshot(videoRef.current, 1024, 0.75)
     if (snapshot) {
-      handleScanFrame(snapshot, 'vision')
+      handleScanFrame(snapshot, 'vision', undefined, latestTargetBoxRef.current || undefined)
     }
-  }, [handleScanFrame, store])
+  }, [handleScanFrame])
 
   // Clear detected AR books
   const handleClearTracked = useCallback(() => {
@@ -311,13 +361,17 @@ function ScannerPage() {
       {/* 30 FPS Camera & Video Viewfinder */}
       <Viewfinder
         onScanFrame={handleScanFrame}
-        isScanning={isScanning}
+        isScanning={activeScansCount >= 3}
         isAutoScan={store.isAutoScan}
         facingMode={facingMode}
         isTorchOn={store.isTorchOn}
         onTorchAvailabilityChange={setIsTorchAvailable}
         containerRef={containerRef}
         videoRef={videoRef}
+        onTargetBoxChange={(box) => {
+          latestTargetBoxRef.current = box
+        }}
+        flashTriggerRef={flashTriggerRef}
       />
 
       {/* 60 FPS Real-time AR Overlay */}
@@ -335,7 +389,9 @@ function ScannerPage() {
         onToggleTorch={handleToggleTorch}
         isTorchAvailable={isTorchAvailable}
         onTriggerManualScan={handleTriggerManualScan}
-        isScanning={isScanning}
+        isScanning={activeScansCount >= 3}
+        activeScansCount={activeScansCount}
+        justCaptured={justCaptured}
         processingCount={processingBookIds.length}
         hasTrackedBooks={trackedItems.length > 0}
         onClearTracked={handleClearTracked}
