@@ -12,6 +12,7 @@ export const SpineBracket: React.FC<SpineBracketProps> = ({
   isSelected,
   isWanted = false,
 }) => {
+  const { book, currentBox, opacity } = item
   const isPending = book.isPendingAnalysis
   const isSpine = book.type === 'spine'
 
